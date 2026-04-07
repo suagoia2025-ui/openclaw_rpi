@@ -6,10 +6,10 @@ Archivos de personalidad y comportamiento del agente. Se editan aquí y se suben
 
 ## Traer archivos desde la Pi (pull)
 
-Desde la raíz del proyecto (en tu Mac):
+Desde la raíz del clon del repositorio (en tu Mac o PC):
 
 ```bash
-cd /Users/ricardo_suarez1983/openclaw_rpi
+cd /ruta/al/clon/openclaw_rpi
 ./pull-workspace.sh
 ```
 
@@ -28,7 +28,7 @@ scp -r serv_openclaw@192.168.1.16:~/.openclaw/workspace/* ./workspace/
 ## Enviar archivos a la Pi (push) después de editar
 
 ```bash
-cd /Users/ricardo_suarez1983/openclaw_rpi
+cd /ruta/al/clon/openclaw_rpi
 ./push-workspace.sh
 ```
 
