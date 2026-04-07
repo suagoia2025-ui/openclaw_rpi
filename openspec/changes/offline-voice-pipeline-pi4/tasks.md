@@ -27,7 +27,7 @@
 - [ ] 5.1 Implementar script shell o Python mínimo que encadene: audio → STT → texto a LLM → texto a Piper → archivo de audio (sin HTTP/HTTPS en el camino de inferencia)
 - [ ] 5.2 Asegurar formato de audio entre etapas (p. ej. WAV 16 kHz mono hacia STT; conversión si hace falta entre pasos)
 - [ ] 5.3 Incluir audio de prueba versionado o instrucciones para generar uno, y salida verificable (WAV/log)
-- [ ] 4.1 Instalar Piper y descargar voz **`es_CO-female-medium`** (archivos `es_CO-female-medium.onnx` y `es_CO-female-medium.onnx.json`) desde el repositorio oficial de Piper
+- [ ] 5.4 Definir system prompt de Phi-3-mini con restricciones de contenido infantil (niños 2-7 años: lenguaje simple, dominio educativo, sin contenido adulto) e implementar filtro de salida que reemplace respuestas fuera de dominio por respuesta segura predefinida
 
 ## 6. Documentación y verificación final
 
