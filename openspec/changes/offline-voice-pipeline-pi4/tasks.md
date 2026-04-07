@@ -2,7 +2,7 @@
 
 - [ ] 1.1 Definir y documentar directorio de modelos (p. ej. `~/voice-models/` o `/opt/voice-models/`) y variables de entorno para rutas
 - [ ] 1.2 Documentar nombres exactos: Whisper tiny, Phi-3-mini GGUF (cuantización recomendada Q4_K_M o Q4_0), voz Piper español (`es-ES`/`es-MX` según modelo publicado) y tamaños aproximados en MB
-- [ ] 1.3 Añadir en documentación requisitos RPi4 ARM64, RAM 4 GB, disco, uso de swap y límites de contexto/tokens para evitar OOM
+- [ ] 1.3 Añadir en documentación requisitos RPi4 ARM64, SO de referencia Debian GNU/Linux 13 (trixie), RAM 4 GB, disco, uso de swap y límites de contexto/tokens para evitar OOM
 
 ## 2. STT (Whisper tiny)
 

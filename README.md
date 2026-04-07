@@ -1,6 +1,8 @@
 # OpenClaw en Raspberry Pi (hostopclaw)
 
-Repositorio de documentación y **workspace del agente** para un OpenClaw corriendo en una **Raspberry Pi 4** (Debian / Raspberry Pi OS), usuario `serv_openclaw`. El gateway escucha en **loopback** (`127.0.0.1:18789`); el acceso desde la red local se hace por **SSH** (túnel al dashboard, `scp`, etc.).
+Repositorio de documentación y **workspace del agente** para un OpenClaw corriendo en una **Raspberry Pi 4** con **Debian GNU/Linux 13 (trixie)** en **ARM64** (usuario `serv_openclaw`). Comprueba el SO en la Pi con `cat /etc/os-release`. El gateway escucha en **loopback** (`127.0.0.1:18789`); el acceso desde la red local se hace por **SSH** (túnel al dashboard, `scp`, etc.).
+
+**Sistema operativo de referencia (host documentado):** Debian GNU/Linux 13 (trixie), `VERSION_ID=13`, `DEBIAN_VERSION_FULL=13.3` (kernel y paquetes según `apt` en ese host). Otra imagen ARM64 compatible puede funcionar, pero la documentación y pruebas asumen este entorno.
 
 ## Qué incluye este proyecto
 

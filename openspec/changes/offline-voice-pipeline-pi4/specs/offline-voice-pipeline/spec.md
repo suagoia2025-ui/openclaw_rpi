@@ -20,12 +20,12 @@ El sistema SHALL usar **Whisper tiny** (o equivalente documentado como “tiny�
 
 ### Requirement: Ejecución en Raspberry Pi 4
 
-El sistema SHALL poder ejecutarse en **Raspberry Pi 4** con arquitectura **ARM64** y memoria típica de **4 GB** de RAM, documentando uso de swap y límites de tamaño de contexto o longitud de respuesta si son necesarios para evitar fallos por memoria.
+El sistema SHALL poder ejecutarse en **Raspberry Pi 4** con arquitectura **ARM64** y memoria típica de **4 GB** de RAM, documentando uso de swap y límites de tamaño de contexto o longitud de respuesta si son necesarios para evitar fallos por memoria. La documentación del cambio SHALL alinear el SO de referencia con el repositorio principal: **Debian GNU/Linux 13 (trixie)** ARM64 (coherente con `README.md` del proyecto).
 
 #### Scenario: Documentación de recursos
 
 - **WHEN** se publica la guía de instalación
-- **THEN** la guía SHALL incluir requisitos mínimos de RAM/disco y una estimación de orden de magnitud de latencia o tiempo por turno
+- **THEN** la guía SHALL incluir requisitos mínimos de RAM/disco, SO de referencia (Debian 13 trixie ARM64) y una estimación de orden de magnitud de latencia o tiempo por turno
 
 ### Requirement: Punto de entrada reproducible
 

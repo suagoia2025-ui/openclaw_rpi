@@ -1,6 +1,6 @@
 # Setup del sistema e instalación de OpenClaw (después del OS)
 
-Ejecuta estos pasos **ya conectado por SSH** a tu Raspberry Pi 4.
+Ejecuta estos pasos **ya conectado por SSH** a tu Raspberry Pi 4. El **host de referencia** del repo es **Debian GNU/Linux 13 (trixie)** ARM64; otros Debian/Raspberry Pi OS recientes en ARM64 suelen ser compatibles, pero los comandos se validaron en trixie.
 
 ## Conectarse por SSH a la Pi
 

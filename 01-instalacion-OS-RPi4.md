@@ -2,6 +2,12 @@
 
 Guía paso a paso para flashear Raspberry Pi OS y dejarlo listo para OpenClaw.
 
+## SO de referencia en este proyecto
+
+El host donde está documentado OpenClaw (p. ej. `hostopclaw`) corre **Debian GNU/Linux 13 (trixie)** en **ARM64** (`VERSION_ID=13`, `VERSION_CODENAME=trixie`, `DEBIAN_VERSION_FULL=13.3`). Para comprobarlo: `cat /etc/os-release`.
+
+Si tu Pi ya coincide con eso, no necesitas reflashear: pasa directamente a [`02-setup-sistema-openclaw.md`](02-setup-sistema-openclaw.md). La guía siguiente describe **una** forma de preparar la tarjeta con **Raspberry Pi Imager** y **Raspberry Pi OS Lite (64-bit)**; es alternativa típica para un sistema nuevo, no el único camino hacia el mismo estado que el host de referencia.
+
 ---
 
 ## Antes de empezar
