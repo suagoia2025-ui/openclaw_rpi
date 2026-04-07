@@ -1,0 +1,32 @@
+# Entornos y secretos (nunca subir credenciales)
+.env
+.env.*
+*.env
+!.env.example
+
+# OAuth / Google / claves locales
+*client_secret*.json
+google-oauth*.json
+*credentials*.json
+!**/credentials.example.json
+
+# OpenClaw en la máquina local (si alguien copia por error)
+.openclaw/
+
+# OS y editores
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Logs y temporales
+*.log
+/tmp/
+.cache/
+
+# Node / Python por si se añaden scripts
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
