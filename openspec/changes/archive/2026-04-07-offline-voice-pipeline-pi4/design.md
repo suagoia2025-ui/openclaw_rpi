@@ -26,7 +26,7 @@ La Raspberry Pi 4 del proyecto ya ejecuta **OpenClaw** con gateway en loopback y
 | Implementación STT | **whisper.cpp** o **faster-whisper** (CPU) | `whisper.cpp` es muy usado en edge; `faster-whisper` + CTranslate2 si hay wheels ARM64 estables. |
 | LLM | **Phi-3-mini** en **GGUF** (cuantización **Q4_K_M** o **Q4_0** como punto de partida) | Tamaño razonable; `llama.cpp`/`llamafile`/`llama-cpp-python` son el camino estándar en ARM. |
 | Runtime LLM | **llama.cpp** (CLI `llama-cli` o servidor local loopback) | Sin dependencia de PyTorch completo en muchos casos; control explícito de contexto y memoria. |
-| TTS | **Piper** + voz **es-ES** (o `es-ES-*`/`es-MX-*` según modelo publicado) | Offline, ligero, buena calidad para voz en español. |
+| TTS | **Piper** + voz **`es_CO-female-medium`** (español; archivos `.onnx` + `.onnx.json`) | Offline, ligero; voz por defecto acordada con el spec del cambio. |
 | Formato audio I/O | WAV **16 kHz** mono para STT; salida Piper según modelo (p. ej. 22,05 kHz) | Alineado con Whisper estándar y Piper. |
 | Orquestación | Script **shell** o **Python** mínimo que encadena tres pasos | Menor superficie de fallo; fácil de depurar en la Pi. |
 | Ubicación de modelos | Directorio fijo, p. ej. `/opt/voice-models/` o `~/voice-models/` con `README` | Evita rutas hardcodeadas dispersas; documentar `ENV`. |
@@ -54,8 +54,8 @@ La Raspberry Pi 4 del proyecto ya ejecuta **OpenClaw** con gateway en loopback y
 4. Integrar script único; opcional: `systemd` user service para demo.  
 5. **Rollback:** desinstalar paquetes y borrar carpeta de modelos; no afecta OpenClaw existente.
 
-## Open Questions
+## Open Questions (resueltas en la implementación)
 
-- ¿Versión exacta del GGUF Phi-3-mini (repositorio Hugging Face recomendado) y tamaño en MB?  
-- ¿Entrada de audio: archivo WAV fijo, `arecord`, o stream desde ALSA?  
-- ¿Salida: solo WAV a archivo o reproducción directa con `aplay`?
+- **GGUF Phi-3-mini:** documentado en `voice-pipeline/MODELS.md` — un único archivo **Q4_K_M** o **Q4_0** (p. ej. `Phi-3-mini-4k-instruct-Q4_K_M.gguf`, ~2,2–2,4 GB); el operador elige el repositorio Hugging Face concreto y verifica la licencia.
+- **Entrada de audio:** archivo **WAV 16 kHz mono** como contrato del pipeline; grabación vía `arecord` / micrófono documentado en `04-offline-voice-pipeline.md`.
+- **Salida:** **WAV** escrito por Piper; reproducción con `aplay`/`ffplay` opcional fuera del pipeline.

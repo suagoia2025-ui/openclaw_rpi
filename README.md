@@ -15,8 +15,9 @@ Repositorio de documentación y **workspace del agente** para un OpenClaw corrie
 | **Gmail y Calendar** | CLI **[gog](https://gogcli.sh/)** con OAuth (Google Cloud); entorno para el daemon en `~/.openclaw/.env`. |
 | **Búsqueda web** | Brave Search API (`web_search` en el gateway). |
 | **Workspace** | Markdown del agente (`AGENTS.md`, `TOOLS.md`, etc.) en `workspace/`; en la Pi: `~/.openclaw/workspace/`. |
+| **Voz offline** | Pipeline STT → LLM → TTS local (Whisper tiny, Phi-3-mini GGUF, Piper `es_CO-female-medium`): [`04-offline-voice-pipeline.md`](04-offline-voice-pipeline.md), carpeta [`voice-pipeline/`](voice-pipeline/). |
 
-Guía de instalación del sistema y estado probado: [`02-setup-sistema-openclaw.md`](02-setup-sistema-openclaw.md). Flujos adicionales: [`01-instalacion-OS-RPi4.md`](01-instalacion-OS-RPi4.md), [`03-servicio-systemd-manual.md`](03-servicio-systemd-manual.md).
+Guía de instalación del sistema y estado probado: [`02-setup-sistema-openclaw.md`](02-setup-sistema-openclaw.md). Flujos adicionales: [`01-instalacion-OS-RPi4.md`](01-instalacion-OS-RPi4.md), [`03-servicio-systemd-manual.md`](03-servicio-systemd-manual.md), voz offline: [`04-offline-voice-pipeline.md`](04-offline-voice-pipeline.md), **instalación paso a paso en la Pi (desde cero):** [`05-instalacion-voz-offline-pi.md`](05-instalacion-voz-offline-pi.md).
 
 ## Arquitectura
 
@@ -73,6 +74,9 @@ openclaw_rpi/
 ├── 01-instalacion-OS-RPi4.md # Imager, OS Lite, SSH
 ├── 02-setup-sistema-openclaw.md  # Node, OpenClaw, dashboard, estado instalado
 ├── 03-servicio-systemd-manual.md # Detalle del servicio (referencia)
+├── 04-offline-voice-pipeline.md # STT/LLM/TTS offline en la Pi
+├── 05-instalacion-voz-offline-pi.md # Instalar binarios y modelos en la Pi desde cero
+├── voice-pipeline/           # Scripts y prompts del pipeline de voz
 ├── push-workspace.sh         # Sube workspace/*.md a la Pi
 ├── pull-workspace.sh         # Trae workspace desde la Pi
 └── workspace/                # Workspace del agente (edición local)

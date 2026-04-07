@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""
+Pipeline offline: WAV → whisper.cpp → llama-cli (Phi-3 GGUF) → filtro infantil → Piper.
+Sin HTTP en tiempo de inferencia; solo subprocess y archivos locales.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_VOICE = Path(__file__).resolve().parent.parent
+DEFAULT_SYSTEM = REPO_VOICE / "prompts" / "system_child_educational.txt"
+FILTER_SCRIPT = REPO_VOICE / "scripts" / "output_filter.py"
+
+
+def read_system_prompt() -> str:
+    p = os.environ.get("VOICE_SYSTEM_PROMPT", "").strip()
+    path = Path(p) if p else DEFAULT_SYSTEM
+    if not path.is_file():
+        raise FileNotFoundError(f"System prompt no encontrado: {path}")
+    return path.read_text(encoding="utf-8").strip()
+
+
+def run_whisper(whisper_bin: str, model: str, wav: Path, work: Path) -> str:
+    out_txt = work / "stt.txt"
+    # whisper.cpp: -nt sin marcas de tiempo si está disponible; si falla, quitar -nt del comando.
+    cmd = [whisper_bin, "-m", model, "-f", str(wav), "-nt"]
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"whisper falló: {proc.stderr or proc.stdout}")
+    text = (proc.stdout or "").strip()
+    if not text and proc.stderr:
+        text = proc.stderr.strip()
+    if not text:
+        out_txt.write_text("", encoding="utf-8")
+        return ""
+    # Líneas tipo [mm:ss] texto
+    cleaned: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^\[[^\]]+\]\s*", "", line)
+        if line:
+            cleaned.append(line)
+    joined = " ".join(cleaned)
+    out_txt.write_text(joined, encoding="utf-8")
+    return joined
+
+
+def build_phi3_prompt(system: str, user_text: str) -> str:
+    """Plantilla tipo Phi-3 instruct (marcadores estilo chat)."""
+    u = user_text.strip() or "(silencio o audio poco claro)"
+    return (
+        f"<|system|>\n{system}<|end|>\n<|user|>\n{u}<|end|>\n<|assistant|>\n"
+    )
+
+
+def run_llama(
+    llama_cli: str,
+    gguf: Path,
+    prompt: str,
+    ctx: int,
+    max_tokens: int,
+) -> str:
+    cmd = [
+        llama_cli,
+        "-m",
+        str(gguf),
+        "-p",
+        prompt,
+        "-c",
+        str(ctx),
+        "-n",
+        str(max_tokens),
+        "--no-display-prompt",
+    ]
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"llama-cli falló: {proc.stderr}")
+    out = (proc.stdout or "").strip()
+    # Quitar posible repetición del prompt
+    out = re.sub(r"^[\s\S]*?<\|assistant\|>\s*", "", out, count=1)
+    return out.strip()
+
+
+def run_filter(py: str, text: str) -> str:
+    proc = subprocess.run(
+        [py, str(FILTER_SCRIPT)],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"output_filter falló: {proc.stderr}")
+    return (proc.stdout or "").strip()
+
+
+def run_piper(piper_bin: str, onnx: Path, json_path: Path, text: str, out_wav: Path) -> None:
+    proc = subprocess.run(
+        [piper_bin, "--model", str(onnx), "--config", str(json_path), "--output_file", str(out_wav)],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"piper falló: {proc.stderr}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Pipeline STT → LLM → TTS offline")
+    ap.add_argument("input_wav", type=Path, help="Entrada 16 kHz mono WAV (recomendado)")
+    ap.add_argument("-o", "--output-wav", type=Path, help="Salida WAV Piper")
+    ap.add_argument("--log-dir", type=Path, help="Guardar stt.txt / respuesta intermedia")
+    args = ap.parse_args()
+
+    whisper_bin = os.environ.get("WHISPER_BIN", "")
+    whisper_model = os.environ.get("WHISPER_MODEL", "")
+    llama_cli = os.environ.get("LLAMA_CLI", "")
+    phi3 = os.environ.get("PHI3_GGUF", "")
+    piper_bin = os.environ.get("PIPER_BIN", "")
+    piper_onnx = os.environ.get("PIPER_VOICE_ONNX", "")
+    piper_json = os.environ.get("PIPER_VOICE_JSON", "")
+    ctx = int(os.environ.get("VOICE_LLAMA_CTX", "2048"))
+    ntok = int(os.environ.get("VOICE_LLAMA_MAX_TOKENS", "128"))
+
+    for name, val in [
+        ("WHISPER_BIN", whisper_bin),
+        ("WHISPER_MODEL", whisper_model),
+        ("LLAMA_CLI", llama_cli),
+        ("PHI3_GGUF", phi3),
+        ("PIPER_BIN", piper_bin),
+        ("PIPER_VOICE_ONNX", piper_onnx),
+        ("PIPER_VOICE_JSON", piper_json),
+    ]:
+        if not val:
+            print(f"Falta variable de entorno {name}", file=sys.stderr)
+            return 2
+
+    out_wav = args.output_wav or args.input_wav.with_name("pipeline_reply.wav")
+
+    sys_prompt = read_system_prompt()
+    py = sys.executable
+
+    with tempfile.TemporaryDirectory(prefix="voice-pipeline-") as td:
+        work = Path(args.log_dir) if args.log_dir else Path(td)
+        if args.log_dir:
+            work.mkdir(parents=True, exist_ok=True)
+
+        transcript = run_whisper(whisper_bin, whisper_model, args.input_wav, work)
+        full_prompt = build_phi3_prompt(sys_prompt, transcript)
+        raw_reply = run_llama(llama_cli, Path(phi3), full_prompt, ctx, ntok)
+        (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
+        filtered = run_filter(py, raw_reply)
+        (work / "llm_filtered.txt").write_text(filtered, encoding="utf-8")
+        run_piper(piper_bin, Path(piper_onnx), Path(piper_json), filtered, out_wav)
+
+    print(f"OK: {out_wav}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

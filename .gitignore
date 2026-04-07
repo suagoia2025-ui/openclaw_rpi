@@ -30,3 +30,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Pipeline de voz local (rutas y credenciales)
+voice-pipeline/.env
