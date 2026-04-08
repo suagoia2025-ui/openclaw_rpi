@@ -106,6 +106,8 @@ ffmpeg -y -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test1
 
 O graba con el micrófono (p. ej. ReSpeaker) usando `arecord -f S16_LE -c 1 -r 16000 -d 5 /tmp/mi_voz.wav`.
 
+**Flujo en vivo (grabar + pipeline + opcional reproducción):** script [`voice-pipeline/scripts/live_mic_pipeline.sh`](voice-pipeline/scripts/live_mic_pipeline.sh). Variables en `env.example` (`VOICE_ALSA_CAPTURE`, `VOICE_RECORD_SECONDS`, `VOICE_PLAY_AFTER`, `VOICE_ALSA_PLAYBACK`). Ver [`voice-pipeline/README.md`](voice-pipeline/README.md).
+
 ## 8. Latencia (orden de magnitud)
 
 En RPi4 4 GB con **tiny**, **Q4** y respuestas cortas, un turno completo suele estar en el orden de **decenas de segundos** (STT + LLM + TTS en CPU); depende de longitud de audio, tokens y swap. Mide con `time` en tu instalación.
