@@ -121,6 +121,7 @@ def run_llama(
     max_tokens: int,
     timeout_sec: int,
     threads: str | None,
+    work_debug: Path | None = None,
 ) -> str:
     # Usar llama-completion (herramienta "completion"), no llama-cli: desde ~2025 llama-cli es
     # solo UI de chat; -no-cnv ahí muestra error y sigue en bucle `>` (upstream: usar llama-completion).
@@ -131,7 +132,7 @@ def run_llama(
     # single_turn + prompt no vacío, se fuerza interactive_first y aparece el prompt `>`.
     # -no-cnv / --no-conversation: desactiva conversación (imprescindible con plantilla en el GGUF).
     # -st: con prompt no vacío, desactiva el modo interactivo en el mismo bloque.
-    # --log-disable: menos ruido en stderr al capturar salida.
+    # No usar --log-disable aquí: en varias builds oculta el bloque "# Answer" y la extracción queda vacía.
     cmd = [
         llama_bin,
         "-m",
@@ -146,7 +147,6 @@ def run_llama(
         str(max_tokens),
         "--no-display-prompt",
         "--simple-io",
-        "--log-disable",
     ]
     if threads:
         cmd.extend(["-t", threads])
@@ -163,7 +163,10 @@ def run_llama(
         raise RuntimeError(f"llama-completion falló: {tail}")
     # Unificar flujo como en terminal: la respuesta suele ir con logs; # Answer es lo habitual.
     combined = (proc.stdout or "").replace("\r\n", "\n")
-    return extract_llama_completion_text(combined)
+    text = extract_llama_completion_text(combined)
+    if not text.strip() and work_debug is not None:
+        (work_debug / "llama_merged_raw.txt").write_text(combined[-200000:], encoding="utf-8")
+    return text
 
 
 def run_filter(py: str, text: str) -> str:
@@ -277,7 +280,14 @@ def main() -> int:
         )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
         raw_reply = run_llama(
-            llama_bin, Path(phi3), full_prompt, ctx, ntok, llama_timeout, llama_threads
+            llama_bin,
+            Path(phi3),
+            full_prompt,
+            ctx,
+            ntok,
+            llama_timeout,
+            llama_threads,
+            work,
         )
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
         if use_output_filter:

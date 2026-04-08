@@ -12,4 +12,4 @@ if [[ -n "${1:-}" ]]; then
 else
   PROMPT="$(cat)"
 fi
-exec "$LLAMA_BIN" -m "$PHI3_GGUF" --no-conversation -st -p "$PROMPT" -c "$CTX" -n "$NTOK" --no-display-prompt --simple-io --log-disable < /dev/null
+exec "$LLAMA_BIN" -m "$PHI3_GGUF" --no-conversation -st -p "$PROMPT" -c "$CTX" -n "$NTOK" --no-display-prompt --simple-io < /dev/null

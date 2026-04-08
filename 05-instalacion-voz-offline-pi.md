@@ -111,7 +111,7 @@ Prueba mínima:
 
 ```bash
 ~/llama.cpp/build/bin/llama-completion -m "$HOME/voice-models/llm/Phi-3-mini-4k-instruct-Q4_K_M.gguf" \
-  --no-conversation -st -p "Hola." -c 2048 -n 64 --no-display-prompt --simple-io --log-disable < /dev/null
+  --no-conversation -st -p "Hola." -c 2048 -n 64 --no-display-prompt --simple-io < /dev/null
 ```
 
 - `LLAMA_COMPLETION=$HOME/llama.cpp/build/bin/llama-completion` (inferencia batch; **no** uses `llama-cli` para el pipeline: es solo chat y queda en `>`)
@@ -272,10 +272,10 @@ En **`llama-completion`** (herramienta correcta para un prompt y salir), el car�
 Ejemplo de prueba mínima (termina sola; sin teclado):
 
 ```bash
-"$LLAMA_COMPLETION" -m "$PHI3_GGUF" --no-conversation -st -p "hola" -n 32 --no-display-prompt --simple-io --log-disable < /dev/null
+"$LLAMA_COMPLETION" -m "$PHI3_GGUF" --no-conversation -st -p "hola" -n 32 --no-display-prompt --simple-io < /dev/null
 ```
 
-Si tu build **no reconoce** `--log-disable`, quítalo del comando o actualiza llama.cpp.
+*(El pipeline no usa `--log-disable`: en algunas builds oculta el bloque de respuesta legible.)*
 
 | Síntoma | Qué revisar |
 |--------|-------------|
