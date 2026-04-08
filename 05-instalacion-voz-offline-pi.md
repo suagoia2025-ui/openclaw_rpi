@@ -266,6 +266,7 @@ aplay -r 22050 -f S16_LE -c 1 /tmp/reply.wav
 | Error al descargar GGUF | Conexión, espacio en disco, o descarga manual desde Hugging Face |
 | Proceso muere por memoria | Swap (apartado 8), bajar `VOICE_LLAMA_CTX` y `VOICE_LLAMA_MAX_TOKENS` en `.env` |
 | `TimeoutExpired` en `llama-cli` | En la Pi Phi-3 puede tardar **>10 min**; sube `VOICE_LLAMA_TIMEOUT_SEC` (p. ej. `3600`) o baja `VOICE_LLAMA_MAX_TOKENS` / `VOICE_LLAMA_CTX`. Opcional: `VOICE_LLAMA_THREADS=4`. Actualiza `voice-pipeline` con `git pull`. |
+| Pipeline no termina y `llama-cli` en modo `>` (chat) | Versiones nuevas activan modo conversación por defecto. El script ya usa **`-no-cnv`** y **`--simple-io`**; `git pull` y vuelve a ejecutar. Prueba manual: `llama-cli ... -p "hola" -n 32 -no-cnv --simple-io < /dev/null` |
 | Piper no encuentra la voz | Nombres y rutas de `.onnx` y `.onnx.json` en `.env` |
 
 Documentación adicional: [`04-offline-voice-pipeline.md`](04-offline-voice-pipeline.md), [`voice-pipeline/MODELS.md`](voice-pipeline/MODELS.md), [`voice-pipeline/CHECKLIST.md`](voice-pipeline/CHECKLIST.md).
