@@ -9,5 +9,5 @@ Marca cada paso en la Raspberry Pi (Debian 13 trixie ARM64) tras copiar el repo 
 - [ ] Prueba STT: `bash scripts/stt_whisper_cpp.sh /ruta/prueba_16k_mono.wav` devuelve texto razonable.
 - [ ] Prueba LLM: `bash scripts/llm_llama_cli.sh` con un prompt corto devuelve texto.
 - [ ] Prueba TTS: `echo "Hola" | bash scripts/tts_piper.sh /tmp/t.wav` crea WAV válido.
-- [ ] `python3 scripts/output_filter.py <<< "texto limpio"` imprime el texto; con un término de `filter/blocked_terms.txt` imprime el mensaje seguro.
+- [ ] (Solo si `VOICE_OUTPUT_FILTER=1`) `python3 scripts/output_filter.py <<< "texto limpio"` imprime el texto; con término de `filter/blocked_terms.txt` imprime el mensaje seguro.
 - [ ] Pipeline: `python3 scripts/voice_pipeline.py /ruta/prueba_16k_mono.wav -o /tmp/reply.wav --log-dir /tmp/voice-e2e` termina sin error y genera `/tmp/reply.wav` (y logs en `/tmp/voice-e2e` si se usó `--log-dir`).

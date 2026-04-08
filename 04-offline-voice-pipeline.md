@@ -79,10 +79,10 @@ Instala el binario `piper` según [rhasspy/piper](https://github.com/rhasspy/pip
 echo "Hola, esto es una prueba." | bash voice-pipeline/scripts/tts_piper.sh /tmp/piper-test.wav
 ```
 
-## 6. Pipeline completo y filtro infantil
+## 6. Pipeline completo y filtro infantil (opcional)
 
 - **System prompt:** [`voice-pipeline/prompts/system_child_educational.txt`](voice-pipeline/prompts/system_child_educational.txt) (sobreescribible con **`VOICE_SYSTEM_PROMPT`**).
-- **Filtro de salida:** [`voice-pipeline/scripts/output_filter.py`](voice-pipeline/scripts/output_filter.py) + lista [`voice-pipeline/filter/blocked_terms.txt`](voice-pipeline/filter/blocked_terms.txt) (ampliable).
+- Por defecto la salida del **LLM va directo a Piper**. Filtro: **`VOICE_OUTPUT_FILTER=1`** en `.env` → [`voice-pipeline/scripts/output_filter.py`](voice-pipeline/scripts/output_filter.py) + [`voice-pipeline/filter/blocked_terms.txt`](voice-pipeline/filter/blocked_terms.txt).
 
 **Ejecución:**
 

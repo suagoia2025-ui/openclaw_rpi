@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Pipeline offline: WAV → whisper.cpp → llama-completion (Phi-3 GGUF) → filtro infantil → Piper.
+Pipeline offline: WAV → whisper.cpp → llama-completion (Phi-3 GGUF) → Piper.
+Filtro infantil opcional (VOICE_OUTPUT_FILTER=1 → output_filter.py).
 Sin HTTP en tiempo de inferencia; solo subprocess y archivos locales.
 """
 from __future__ import annotations
@@ -157,7 +158,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Pipeline STT → LLM → TTS offline")
     ap.add_argument("input_wav", type=Path, help="Entrada 16 kHz mono WAV (recomendado)")
     ap.add_argument("-o", "--output-wav", type=Path, help="Salida WAV Piper")
-    ap.add_argument("--log-dir", type=Path, help="Guardar stt.txt / respuesta intermedia")
+    ap.add_argument(
+        "--log-dir",
+        type=Path,
+        help="Guardar stt.txt, llm_raw.txt y (si filtro activo) llm_filtered.txt",
+    )
     args = ap.parse_args()
 
     whisper_bin = os.environ.get("WHISPER_BIN", "")
@@ -176,6 +181,11 @@ def main() -> int:
     whisper_timeout = int(os.environ.get("VOICE_WHISPER_TIMEOUT_SEC", "900"))
     whisper_lang = (os.environ.get("VOICE_WHISPER_LANGUAGE") or "es").strip()
     llama_threads = os.environ.get("VOICE_LLAMA_THREADS", "").strip() or None
+    use_output_filter = os.environ.get("VOICE_OUTPUT_FILTER", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     if not llama_bin:
         print(
@@ -206,14 +216,14 @@ def main() -> int:
     out_wav = args.output_wav or args.input_wav.with_name("pipeline_reply.wav")
 
     sys_prompt = read_system_prompt()
-    py = sys.executable
 
     with tempfile.TemporaryDirectory(prefix="voice-pipeline-") as td:
         work = Path(args.log_dir) if args.log_dir else Path(td)
         if args.log_dir:
             work.mkdir(parents=True, exist_ok=True)
 
-        print("[voice-pipeline] 1/4 STT (Whisper)...", flush=True)
+        ntot = 4 if use_output_filter else 3
+        print(f"[voice-pipeline] 1/{ntot} STT (Whisper)...", flush=True)
         transcript = run_whisper(
             whisper_bin,
             whisper_model,
@@ -222,7 +232,7 @@ def main() -> int:
             whisper_timeout,
             whisper_lang or None,
         )
-        print(f"[voice-pipeline] STT listo ({len(transcript)} chars). 2/4 LLM (Phi-3)…", flush=True)
+        print(f"[voice-pipeline] STT listo ({len(transcript)} chars). 2/{ntot} LLM (Phi-3)…", flush=True)
         print(
             "[voice-pipeline]    En RPi puede tardar 10–40+ min; timeout="
             f"{llama_timeout}s. Ctrl+C para cancelar.",
@@ -233,11 +243,17 @@ def main() -> int:
             llama_bin, Path(phi3), full_prompt, ctx, ntok, llama_timeout, llama_threads
         )
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
-        print("[voice-pipeline] 3/4 Filtro de salida…", flush=True)
-        filtered = run_filter(py, raw_reply)
-        (work / "llm_filtered.txt").write_text(filtered, encoding="utf-8")
-        print("[voice-pipeline] 4/4 TTS (Piper)…", flush=True)
-        run_piper(piper_bin, Path(piper_onnx), Path(piper_json), filtered, out_wav)
+        if use_output_filter:
+            print("[voice-pipeline] 3/4 Filtro de salida…", flush=True)
+            tts_text = run_filter(sys.executable, raw_reply)
+            (work / "llm_filtered.txt").write_text(tts_text, encoding="utf-8")
+            print("[voice-pipeline] 4/4 TTS (Piper)…", flush=True)
+        else:
+            tts_text = raw_reply
+            print("[voice-pipeline] 3/3 TTS (Piper), salida directa del LLM…", flush=True)
+        if not tts_text.strip():
+            tts_text = "No tengo respuesta en este momento."
+        run_piper(piper_bin, Path(piper_onnx), Path(piper_json), tts_text, out_wav)
 
     print(f"OK: {out_wav}", flush=True)
     return 0
