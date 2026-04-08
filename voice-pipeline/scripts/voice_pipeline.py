@@ -137,6 +137,34 @@ def _strip_markdown_fences(s: str) -> str:
     return re.sub(r"```+", " ", s).strip()
 
 
+def _strip_assistant_meta_tail(s: str) -> str:
+    """Quita colas meta del modelo (orientación, 'otras respuestas', etc.) tras una respuesta válida."""
+    if not s:
+        return s
+    # Tras punto + espacio: cortar desde la frase meta (conserva "… azul.").
+    for pat in (
+        r"(?i)\.\s+para mantener la orientación\b",
+        r"(?i)\.\s+aquí hay (algunas |varias )?otr[ao]s\b",
+        r"(?i)\.\s+aquí tienes (algunas |varias )?",
+        r"(?i)\.\s+como has solicitado\b",
+        r"(?i)\.\s+siguiendo con tu\b",
+        r"(?i)\.\s+en cuanto a la orientación\b",
+    ):
+        m = re.search(pat, s)
+        if m:
+            return s[: m.start() + 1].strip()
+    # Sin punto antes (menos frecuente): cortar desde espacio + frase meta.
+    for pat in (
+        r"(?i)\s+para mantener la orientación\b",
+        r"(?i)\s+aquí hay (algunas |varias )?otr[ao]s\b",
+        r"(?i)\s+como has solicitado\b",
+    ):
+        m = re.search(pat, s)
+        if m:
+            return s[: m.start()].strip().rstrip(".,;:")
+    return s
+
+
 def _line_looks_like_speech_line(line: str) -> bool:
     """True si la línea parece frase hablada (español), no basura numérica ni pseudo-código."""
     t = line.strip()
@@ -204,7 +232,8 @@ def _clean_model_lines(body: str) -> str:
     text = "\n".join(lines_out).strip()
     text = _strip_special_tokens(text)
     text = _strip_markdown_fences(text)
-    return _prefer_last_prose_paragraph(text)
+    text = _prefer_last_prose_paragraph(text)
+    return _strip_assistant_meta_tail(text)
 
 
 def extract_llama_completion_text(raw: str) -> str:
@@ -242,7 +271,7 @@ def extract_llama_completion_text(raw: str) -> str:
             continue
         lines_kept.append(li)
     tail = _strip_markdown_fences(_strip_special_tokens("\n".join(lines_kept).strip()))
-    return _prefer_last_prose_paragraph(tail)
+    return _strip_assistant_meta_tail(_prefer_last_prose_paragraph(tail))
 
 
 def run_llama(
