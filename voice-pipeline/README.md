@@ -28,6 +28,6 @@ cd voice-pipeline && set -a && source .env && set +a
 ./scripts/live_mic_pipeline.sh
 ```
 
-Salida por defecto: `/tmp/pipeline_reply.wav`. Otro path: `./scripts/live_mic_pipeline.sh /tmp/respuesta.wav`.
+Salida por defecto: `/tmp/pipeline_reply.wav`. Otro path: `./scripts/live_mic_pipeline.sh /tmp/respuesta.wav`. Logs intermedios (p. ej. `llm_raw.txt`): `./scripts/live_mic_pipeline.sh /tmp/salida.wav --log-dir /tmp/voice-debug` (crea el directorio si hace falta).
 
 Los binarios (`whisper.cpp`, `llama.cpp`, `piper`) deben estar instalados en la Raspberry Pi; esta carpeta solo contiene scripts y documentación.
