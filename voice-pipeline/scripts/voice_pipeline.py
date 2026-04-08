@@ -124,6 +124,13 @@ def _line_is_llama_noise(s: str) -> bool:
         return True
     if len(t) > 160 and t.count(" ") < 4:
         return True
+    if re.search(
+        r"(?i)(instrucci[oó]n\s*\d|r[úu]brica|evaluaci[oó]n\s*(tipo|de|del)|"
+        r"afinemos la respuesta|interferencia lingüística|interferencia linguistica|"
+        r"^\*+\s*instrucci)",
+        t,
+    ):
+        return True
     return False
 
 
@@ -135,6 +142,35 @@ def _strip_markdown_fences(s: str) -> str:
     """Quita bloques ``` ... ``` (el modelo a veces inventa código; Piper no debe leerlo)."""
     s = re.sub(r"(?s)```[a-zA-Z0-9_-]*\s*\r?\n.*?```", " ", s)
     return re.sub(r"```+", " ", s).strip()
+
+
+def _strip_markdown_spans(s: str) -> str:
+    """Quita **negrita** y *cursiva* para TTS; los asteriscos suenan raros o leen basura."""
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+    s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", s)
+    return re.sub(r"\*+", "", s).strip()
+
+
+def _strip_rubric_leakage(s: str) -> str:
+    """Corta texto de rúbrica / datos de entrenamiento que a veces filtra el modelo."""
+    if not s:
+        return s
+    for pat in (
+        r"(?is)\n\s*\*+\s*instrucci[oó]n\b",
+        r"(?i)[?!…]\s+\*+\s*instrucci[oó]n\b",
+        r"(?is)\n\s*instrucci[oó]n\s*\d+\s",
+        r"(?is)\n\s*afinemos la respuesta\b",
+        r"(?is)\n\s*escucho interferencia lingüística\b",
+        r"(?is)\n\s*escucho interferencia linguistica\b",
+        r"(?i)\binterferencia lingüística\b",
+        r"(?i)\binterferencia linguistica\b",
+        r"(?is)\n\s*r[úu]brica\b",
+        r"(?is)\n\s*evaluaci[oó]n\s*\(",
+    ):
+        m = re.search(pat, s)
+        if m:
+            s = s[: m.start()].strip()
+    return s
 
 
 def _strip_assistant_meta_tail(s: str) -> str:
@@ -177,6 +213,10 @@ def _line_looks_like_speech_line(line: str) -> bool:
     if "::" in t:
         return False
     if t.rstrip().endswith(";") and "(" in t:
+        return False
+    if re.search(r"(?i)(instrucci[oó]n\s*\d|afinemos la respuesta|interferencia lingu)", t):
+        return False
+    if t.lstrip().startswith("*") and re.search(r"(?i)instrucci[oó]n", t):
         return False
     letters = sum(1 for c in t if c.isalpha())
     digits = sum(1 for c in t if c.isdigit())
@@ -232,8 +272,11 @@ def _clean_model_lines(body: str) -> str:
     text = "\n".join(lines_out).strip()
     text = _strip_special_tokens(text)
     text = _strip_markdown_fences(text)
+    text = _strip_rubric_leakage(text)
+    text = _strip_markdown_spans(text)
     text = _prefer_last_prose_paragraph(text)
-    return _strip_assistant_meta_tail(text)
+    text = _strip_assistant_meta_tail(text)
+    return _strip_rubric_leakage(text)
 
 
 def extract_llama_completion_text(raw: str) -> str:
@@ -271,7 +314,11 @@ def extract_llama_completion_text(raw: str) -> str:
             continue
         lines_kept.append(li)
     tail = _strip_markdown_fences(_strip_special_tokens("\n".join(lines_kept).strip()))
-    return _strip_assistant_meta_tail(_prefer_last_prose_paragraph(tail))
+    tail = _strip_rubric_leakage(tail)
+    tail = _strip_markdown_spans(tail)
+    tail = _prefer_last_prose_paragraph(tail)
+    tail = _strip_assistant_meta_tail(tail)
+    return _strip_rubric_leakage(tail)
 
 
 def run_llama(
