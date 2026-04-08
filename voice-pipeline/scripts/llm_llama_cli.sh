@@ -10,4 +10,4 @@ if [[ -n "${1:-}" ]]; then
 else
   PROMPT="$(cat)"
 fi
-exec "$LLAMA_CLI" -m "$PHI3_GGUF" -p "$PROMPT" -c "$CTX" -n "$NTOK" --no-display-prompt
+exec "$LLAMA_CLI" -m "$PHI3_GGUF" -p "$PROMPT" -c "$CTX" -n "$NTOK" --no-display-prompt -no-cnv --simple-io < /dev/null

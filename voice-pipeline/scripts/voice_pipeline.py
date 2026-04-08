@@ -77,6 +77,8 @@ def run_llama(
     timeout_sec: int,
     threads: str | None,
 ) -> str:
+    # -no-cnv: sin modo conversación, si no llama-cli entra en REPL interactivo (>) y el pipeline se cuelga.
+    # --simple-io: salida adecuada para subprocess (sin TUI).
     cmd = [
         llama_cli,
         "-m",
@@ -88,6 +90,8 @@ def run_llama(
         "-n",
         str(max_tokens),
         "--no-display-prompt",
+        "-no-cnv",
+        "--simple-io",
     ]
     if threads:
         cmd.extend(["-t", threads])
@@ -96,6 +100,7 @@ def run_llama(
         capture_output=True,
         text=True,
         timeout=timeout_sec,
+        stdin=subprocess.DEVNULL,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"llama-cli falló: {proc.stderr}")
