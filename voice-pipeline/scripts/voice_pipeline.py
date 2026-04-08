@@ -173,19 +173,28 @@ def main() -> int:
         if args.log_dir:
             work.mkdir(parents=True, exist_ok=True)
 
+        print("[voice-pipeline] 1/4 STT (Whisper)...", flush=True)
         transcript = run_whisper(
             whisper_bin, whisper_model, args.input_wav, work, whisper_timeout
+        )
+        print(f"[voice-pipeline] STT listo ({len(transcript)} chars). 2/4 LLM (Phi-3)…", flush=True)
+        print(
+            "[voice-pipeline]    En RPi puede tardar 10–40+ min; timeout="
+            f"{llama_timeout}s. Ctrl+C para cancelar.",
+            flush=True,
         )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
         raw_reply = run_llama(
             llama_cli, Path(phi3), full_prompt, ctx, ntok, llama_timeout, llama_threads
         )
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
+        print("[voice-pipeline] 3/4 Filtro de salida…", flush=True)
         filtered = run_filter(py, raw_reply)
         (work / "llm_filtered.txt").write_text(filtered, encoding="utf-8")
+        print("[voice-pipeline] 4/4 TTS (Piper)…", flush=True)
         run_piper(piper_bin, Path(piper_onnx), Path(piper_json), filtered, out_wav)
 
-    print(f"OK: {out_wav}")
+    print(f"OK: {out_wav}", flush=True)
     return 0
 
 
