@@ -77,6 +77,42 @@ def build_phi3_prompt(system: str, user_text: str) -> str:
     )
 
 
+def extract_llama_completion_text(raw: str) -> str:
+    """Obtiene el texto generado de la salida de llama-completion (simple-io / métricas al final)."""
+    raw = (raw or "").replace("\r\n", "\n").strip()
+    if not raw:
+        return ""
+    m = re.search(
+        r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[end of text\]|\ncommon_perf_print:|\Z)",
+        raw,
+    )
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    if "<|assistant|>" in raw:
+        tail = re.sub(r"^[\s\S]*?<\|assistant\|>\s*", "", raw, count=1)
+        tail = re.sub(r"\n\s*\[end of text\].*", "", tail, flags=re.I | re.DOTALL)
+        return tail.strip()
+    head = re.split(r"\ncommon_perf_print:", raw, maxsplit=1)[0]
+    head = re.split(r"\n\s*\[end of text\]", head, maxsplit=1, flags=re.I)[0]
+    lines: list[str] = []
+    for li in head.split("\n"):
+        s = li.strip()
+        if not s:
+            if lines:
+                lines.append("")
+            continue
+        if re.match(
+            r"^(main:|llama_|load:|print_info:|sched_|sampler |encoding|gguf|common_init|"
+            r"llama_context|llama_kv|llama_model|llama_memory|whisper|Running|==|generate:|"
+            r"system_info:|ggml_|print_timings|common_perf)",
+            s,
+            re.I,
+        ):
+            continue
+        lines.append(li)
+    return "\n".join(lines).strip()
+
+
 def run_llama(
     llama_bin: str,
     gguf: Path,
@@ -120,13 +156,14 @@ def run_llama(
         text=True,
         timeout=timeout_sec,
         stdin=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"llama-completion falló: {proc.stderr}")
-    out = (proc.stdout or "").strip()
-    # Quitar posible repetición del prompt
-    out = re.sub(r"^[\s\S]*?<\|assistant\|>\s*", "", out, count=1)
-    return out.strip()
+        tail = (proc.stdout or "")[-6000:]
+        raise RuntimeError(f"llama-completion falló: {tail}")
+    # Unificar flujo como en terminal: la respuesta suele ir con logs; # Answer es lo habitual.
+    combined = (proc.stdout or "").replace("\r\n", "\n")
+    return extract_llama_completion_text(combined)
 
 
 def run_filter(py: str, text: str) -> str:
