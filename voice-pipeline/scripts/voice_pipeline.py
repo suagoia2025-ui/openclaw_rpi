@@ -187,6 +187,13 @@ def main() -> int:
             print(f"Falta variable de entorno {name}", file=sys.stderr)
             return 2
 
+    if not args.input_wav.is_file():
+        print(
+            f"No existe el WAV de entrada: {args.input_wav.resolve()}",
+            file=sys.stderr,
+        )
+        return 2
+
     out_wav = args.output_wav or args.input_wav.with_name("pipeline_reply.wav")
 
     sys_prompt = read_system_prompt()
