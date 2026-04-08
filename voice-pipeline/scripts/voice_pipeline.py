@@ -135,7 +135,9 @@ def _line_is_llama_noise(s: str) -> bool:
 
 
 def _strip_special_tokens(s: str) -> str:
-    return re.sub(r"<\|[^|]+\|>", "", s).strip()
+    s = re.sub(r"<\|[^|]+\|>", "", s)
+    s = re.sub(r"(?i)\s*\[end of text\]\s*", " ", s)
+    return s.strip()
 
 
 def _strip_markdown_fences(s: str) -> str:
