@@ -1,7 +1,8 @@
-# Un término por línea (minúsculas). Si la respuesta del LLM contiene alguno, se sustituye por el mensaje seguro.
-# Amplía esta lista según tu criterio; mantenla en UTF-8.
+# Un término por línea (minúsculas). Coincidencia por PALABRA COMPLETA (ver output_filter.py).
+# Amplía según tu criterio; mantenla en UTF-8.
 porno
 suicidio
 droga
+drogas
 cocaína
 heroína

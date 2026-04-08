@@ -28,9 +28,13 @@ def load_blocklist(path: Path) -> set[str]:
 
 
 def should_block(text: str, blocklist: set[str]) -> bool:
+    """Bloquea solo si aparece el término como palabra completa (evita falsos positivos)."""
     t = text.lower()
     for term in blocklist:
-        if term and term in t:
+        if not term:
+            continue
+        # Palabra completa (Unicode); antes "droga" coincidía dentro de "drogas" y bloqueaba demasiado.
+        if re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", t, re.UNICODE):
             return True
     # URLs o correos en respuesta a niños pequeños → sustituir
     if re.search(r"https?://|@\w+\.\w+", t):
