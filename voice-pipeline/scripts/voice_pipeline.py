@@ -18,6 +18,9 @@ REPO_VOICE = Path(__file__).resolve().parent.parent
 DEFAULT_SYSTEM = REPO_VOICE / "prompts" / "system_child_educational.txt"
 FILTER_SCRIPT = REPO_VOICE / "scripts" / "output_filter.py"
 
+# Marcador de fin de secuencia de llama.cpp; a veces queda pegado al texto generado.
+_RE_END_OF_TEXT_BRACKET = re.compile(r"\[\s*end\s+of\s+text\s*\]", re.I)
+
 
 def read_system_prompt() -> str:
     p = os.environ.get("VOICE_SYSTEM_PROMPT", "").strip()
@@ -131,12 +134,24 @@ def _line_is_llama_noise(s: str) -> bool:
         t,
     ):
         return True
+    if _RE_END_OF_TEXT_BRACKET.fullmatch(t) or re.match(r"(?i)^\s*end\s+of\s+text\s*$", t):
+        return True
     return False
+
+
+def _strip_end_of_text_markers(s: str) -> str:
+    """Quita [end of text] y variantes (espacios, sin cierre de corchete) para que Piper no lo lea."""
+    if not s:
+        return s
+    s = _RE_END_OF_TEXT_BRACKET.sub(" ", s)
+    s = re.sub(r"(?i)\[\s*end\s+of\s+text\s*$", " ", s)
+    s = re.sub(r"(?i)\bend\s+of\s+text\b", " ", s)
+    return re.sub(r"  +", " ", s).strip()
 
 
 def _strip_special_tokens(s: str) -> str:
     s = re.sub(r"<\|[^|]+\|>", "", s)
-    s = re.sub(r"(?i)\s*\[end of text\]\s*", " ", s)
+    s = _strip_end_of_text_markers(s)
     return s.strip()
 
 
@@ -278,7 +293,8 @@ def _clean_model_lines(body: str) -> str:
     text = _strip_markdown_spans(text)
     text = _prefer_last_prose_paragraph(text)
     text = _strip_assistant_meta_tail(text)
-    return _strip_rubric_leakage(text)
+    text = _strip_rubric_leakage(text)
+    return _strip_end_of_text_markers(text)
 
 
 def extract_llama_completion_text(raw: str) -> str:
@@ -288,23 +304,28 @@ def extract_llama_completion_text(raw: str) -> str:
         return ""
     # Puede haber ruido antes del primer Answer; el último bloque suele ser la generación actual.
     blocks = re.findall(
-        r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[end of text\])",
+        r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[\s*end\s+of\s+text\s*\])",
         raw,
     )
     if blocks:
         return _clean_model_lines(blocks[-1])
     m = re.search(
-        r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[end of text\]|\ncommon_perf_print:|\Z)",
+        r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[\s*end\s+of\s+text\s*\]|\ncommon_perf_print:|\Z)",
         raw,
     )
     if m and m.group(1).strip():
         return _clean_model_lines(m.group(1))
     if "<|assistant|>" in raw:
         tail = re.sub(r"^[\s\S]*?<\|assistant\|>\s*", "", raw, count=1)
-        tail = re.sub(r"\n\s*\[end of text\].*", "", tail, flags=re.I | re.DOTALL)
+        tail = re.sub(
+            r"\n\s*\[\s*end\s+of\s+text\s*\].*",
+            "",
+            tail,
+            flags=re.I | re.DOTALL,
+        )
         return _clean_model_lines(tail)
     head = re.split(r"\ncommon_perf_print:", raw, maxsplit=1)[0]
-    head = re.split(r"\n\s*\[end of text\]", head, maxsplit=1, flags=re.I)[0]
+    head = _RE_END_OF_TEXT_BRACKET.split(head, maxsplit=1)[0]
     lines_kept: list[str] = []
     for li in head.split("\n"):
         s = li.strip()
@@ -320,7 +341,8 @@ def extract_llama_completion_text(raw: str) -> str:
     tail = _strip_markdown_spans(tail)
     tail = _prefer_last_prose_paragraph(tail)
     tail = _strip_assistant_meta_tail(tail)
-    return _strip_rubric_leakage(tail)
+    tail = _strip_rubric_leakage(tail)
+    return _strip_end_of_text_markers(tail)
 
 
 def run_llama(
