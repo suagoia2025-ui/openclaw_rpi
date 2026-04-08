@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Prueba aislada LLM: un prompt en stdin (o primer argumento) → respuesta en stdout.
-# Requiere: LLAMA_CLI, PHI3_GGUF, opcional VOICE_LLAMA_CTX, VOICE_LLAMA_MAX_TOKENS
+# Requiere: LLAMA_COMPLETION (o LLAMA_CLI), PHI3_GGUF; opcional VOICE_LLAMA_CTX, VOICE_LLAMA_MAX_TOKENS
 set -euo pipefail
-: "${LLAMA_CLI:?}" "${PHI3_GGUF:?}"
+: "${PHI3_GGUF:?}"
+LLAMA_BIN="${LLAMA_COMPLETION:-${LLAMA_CLI:-}}"
+[[ -n "$LLAMA_BIN" ]] || { echo "Define LLAMA_COMPLETION o LLAMA_CLI" >&2; exit 1; }
 CTX="${VOICE_LLAMA_CTX:-2048}"
 NTOK="${VOICE_LLAMA_MAX_TOKENS:-128}"
 if [[ -n "${1:-}" ]]; then
@@ -10,4 +12,4 @@ if [[ -n "${1:-}" ]]; then
 else
   PROMPT="$(cat)"
 fi
-exec "$LLAMA_CLI" -m "$PHI3_GGUF" -p "$PROMPT" -c "$CTX" -n "$NTOK" --no-display-prompt -no-cnv --simple-io < /dev/null
+exec "$LLAMA_BIN" -m "$PHI3_GGUF" --no-conversation -st -p "$PROMPT" -c "$CTX" -n "$NTOK" --no-display-prompt --simple-io --log-disable < /dev/null

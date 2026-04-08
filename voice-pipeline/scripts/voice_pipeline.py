@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pipeline offline: WAV → whisper.cpp → llama-cli (Phi-3 GGUF) → filtro infantil → Piper.
+Pipeline offline: WAV → whisper.cpp → llama-completion (Phi-3 GGUF) → filtro infantil → Piper.
 Sin HTTP en tiempo de inferencia; solo subprocess y archivos locales.
 """
 from __future__ import annotations
@@ -69,7 +69,7 @@ def build_phi3_prompt(system: str, user_text: str) -> str:
 
 
 def run_llama(
-    llama_cli: str,
+    llama_bin: str,
     gguf: Path,
     prompt: str,
     ctx: int,
@@ -77,12 +77,22 @@ def run_llama(
     timeout_sec: int,
     threads: str | None,
 ) -> str:
-    # -no-cnv: sin modo conversación, si no llama-cli entra en REPL interactivo (>) y el pipeline se cuelga.
-    # --simple-io: salida adecuada para subprocess (sin TUI).
+    # Usar llama-completion (herramienta "completion"), no llama-cli: desde ~2025 llama-cli es
+    # solo UI de chat; -no-cnv ahí muestra error y sigue en bucle `>` (upstream: usar llama-completion).
+    # -n -1 en llama.cpp = generar hasta llenar contexto (parece “infinito”).
+    if max_tokens <= 0:
+        max_tokens = 128
+    # Ref. upstream tools/completion/completion.cpp: con modo conversación activo, si no hay
+    # single_turn + prompt no vacío, se fuerza interactive_first y aparece el prompt `>`.
+    # -no-cnv / --no-conversation: desactiva conversación (imprescindible con plantilla en el GGUF).
+    # -st: con prompt no vacío, desactiva el modo interactivo en el mismo bloque.
+    # --log-disable: menos ruido en stderr al capturar salida.
     cmd = [
-        llama_cli,
+        llama_bin,
         "-m",
         str(gguf),
+        "--no-conversation",
+        "-st",
         "-p",
         prompt,
         "-c",
@@ -90,8 +100,8 @@ def run_llama(
         "-n",
         str(max_tokens),
         "--no-display-prompt",
-        "-no-cnv",
         "--simple-io",
+        "--log-disable",
     ]
     if threads:
         cmd.extend(["-t", threads])
@@ -103,7 +113,7 @@ def run_llama(
         stdin=subprocess.DEVNULL,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"llama-cli falló: {proc.stderr}")
+        raise RuntimeError(f"llama-completion falló: {proc.stderr}")
     out = (proc.stdout or "").strip()
     # Quitar posible repetición del prompt
     out = re.sub(r"^[\s\S]*?<\|assistant\|>\s*", "", out, count=1)
@@ -144,21 +154,30 @@ def main() -> int:
 
     whisper_bin = os.environ.get("WHISPER_BIN", "")
     whisper_model = os.environ.get("WHISPER_MODEL", "")
-    llama_cli = os.environ.get("LLAMA_CLI", "")
+    llama_bin = os.environ.get("LLAMA_COMPLETION", "").strip() or os.environ.get("LLAMA_CLI", "").strip()
     phi3 = os.environ.get("PHI3_GGUF", "")
     piper_bin = os.environ.get("PIPER_BIN", "")
     piper_onnx = os.environ.get("PIPER_VOICE_ONNX", "")
     piper_json = os.environ.get("PIPER_VOICE_JSON", "")
     ctx = int(os.environ.get("VOICE_LLAMA_CTX", "2048"))
-    ntok = int(os.environ.get("VOICE_LLAMA_MAX_TOKENS", "128"))
+    try:
+        ntok = int(os.environ.get("VOICE_LLAMA_MAX_TOKENS", "128"))
+    except ValueError:
+        ntok = 128
     llama_timeout = int(os.environ.get("VOICE_LLAMA_TIMEOUT_SEC", "2400"))
     whisper_timeout = int(os.environ.get("VOICE_WHISPER_TIMEOUT_SEC", "900"))
     llama_threads = os.environ.get("VOICE_LLAMA_THREADS", "").strip() or None
 
+    if not llama_bin:
+        print(
+            "Falta LLAMA_COMPLETION (ruta a llama-completion) o LLAMA_CLI como alternativa",
+            file=sys.stderr,
+        )
+        return 2
+
     for name, val in [
         ("WHISPER_BIN", whisper_bin),
         ("WHISPER_MODEL", whisper_model),
-        ("LLAMA_CLI", llama_cli),
         ("PHI3_GGUF", phi3),
         ("PIPER_BIN", piper_bin),
         ("PIPER_VOICE_ONNX", piper_onnx),
@@ -190,7 +209,7 @@ def main() -> int:
         )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
         raw_reply = run_llama(
-            llama_cli, Path(phi3), full_prompt, ctx, ntok, llama_timeout, llama_threads
+            llama_bin, Path(phi3), full_prompt, ctx, ntok, llama_timeout, llama_threads
         )
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
         print("[voice-pipeline] 3/4 Filtro de salida…", flush=True)

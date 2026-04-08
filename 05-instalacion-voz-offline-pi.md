@@ -110,11 +110,11 @@ Si el enlace falla, abre en el navegador el repositorio [bartowski/Phi-3-mini-4k
 Prueba mínima:
 
 ```bash
-~/llama.cpp/build/bin/llama-cli -m "$HOME/voice-models/llm/Phi-3-mini-4k-instruct-Q4_K_M.gguf" \
-  -p "Hola." -c 2048 -n 64 --no-display-prompt
+~/llama.cpp/build/bin/llama-completion -m "$HOME/voice-models/llm/Phi-3-mini-4k-instruct-Q4_K_M.gguf" \
+  --no-conversation -st -p "Hola." -c 2048 -n 64 --no-display-prompt --simple-io --log-disable < /dev/null
 ```
 
-- `LLAMA_CLI=$HOME/llama.cpp/build/bin/llama-cli`
+- `LLAMA_COMPLETION=$HOME/llama.cpp/build/bin/llama-completion` (inferencia batch; **no** uses `llama-cli` para el pipeline: es solo chat y queda en `>`)
 - `PHI3_GGUF=$HOME/voice-models/llm/Phi-3-mini-4k-instruct-Q4_K_M.gguf`
 
 ---
@@ -216,7 +216,7 @@ Referencia rápida:
 
 - `WHISPER_BIN=$HOME/whisper.cpp/build/bin/whisper-cli` (o `main`)
 - `WHISPER_MODEL=$HOME/voice-models/whisper/ggml-tiny.bin`
-- `LLAMA_CLI=$HOME/llama.cpp/build/bin/llama-cli`
+- `LLAMA_COMPLETION=$HOME/llama.cpp/build/bin/llama-completion` (inferencia batch; **no** uses `llama-cli` para el pipeline: es solo chat y queda en `>`)
 - `PHI3_GGUF=$HOME/voice-models/llm/Phi-3-mini-4k-instruct-Q4_K_M.gguf`
 - `PIPER_BIN=$HOME/.local/bin/piper`
 - `PIPER_VOICE_ONNX` / `PIPER_VOICE_JSON` → archivos `es_MX-ald-medium` en `~/voice-models/piper/`
@@ -257,6 +257,26 @@ aplay -r 22050 -f S16_LE -c 1 /tmp/reply.wav
 
 ## 7. Si algo falla
 
+### 7.1 Prompt `>` “infinito” con llama.cpp (qué dice el código upstream)
+
+En **`llama-completion`** (herramienta correcta para un prompt y salir), el carácter **`>`** solo se imprime cuando el **modo conversación** sigue activo: en ese caso el programa puede quedar **esperando entrada por teclado** (`readline`), lo que en una terminal parece un bucle infinito. Referencia: [tools/completion/completion.cpp](https://github.com/ggml-org/llama.cpp/blob/master/tools/completion/completion.cpp) (bloque que fija `interactive_first` si hay conversación sin “single turn” + prompt, y el `LOG("\n> ")` en modo conversación).
+
+**Reglas prácticas:**
+
+1. **No uses `llama-cli` para el pipeline** — en versiones recientes es la **UI de chat**; para texto “una vez y terminar” usa **`llama-completion`** (variable **`LLAMA_COMPLETION`** en `.env`).
+2. **Desactiva conversación explícitamente:** `--no-conversation` (o `-no-cnv`) para que no se active el modo chat aunque el GGUF traiga plantilla.
+3. **Un turno:** `-st` con **`-p` no vacío** evita el camino que fuerza modo interactivo cuando la conversación estaría activa (mismo archivo fuente, ~líneas 414–426).
+4. **Prueba en terminal:** si ejecutas el binario **a mano** sin **`< /dev/null`**, con stdin conectado al teclado el programa puede **bloquearse en `>` esperando que escribas**: es comportamiento esperado, no un fallo del modelo. El pipeline usa `stdin` cerrado (`subprocess`); las pruebas manuales deben incluir **`< /dev/null`** o `echo | …`.
+5. **Comprueba qué binario es:** `basename "$(readlink -f "$LLAMA_COMPLETION")"` debe ser **`llama-completion`**, no `llama-cli`.
+
+Ejemplo de prueba mínima (termina sola; sin teclado):
+
+```bash
+"$LLAMA_COMPLETION" -m "$PHI3_GGUF" --no-conversation -st -p "hola" -n 32 --no-display-prompt --simple-io --log-disable < /dev/null
+```
+
+Si tu build **no reconoce** `--log-disable`, quítalo del comando o actualiza llama.cpp.
+
 | Síntoma | Qué revisar |
 |--------|-------------|
 | `command not found` en whisper/llama | Rutas en `.env` y que existan los binarios en `build/bin/` |
@@ -265,8 +285,8 @@ aplay -r 22050 -f S16_LE -c 1 /tmp/reply.wav
 | `libpiper_phonemize.so.1` | Instalación completa en `~/.local/opt/piper` + wrapper con `LD_LIBRARY_PATH` (apartado 4.1) |
 | Error al descargar GGUF | Conexión, espacio en disco, o descarga manual desde Hugging Face |
 | Proceso muere por memoria | Swap (apartado 8), bajar `VOICE_LLAMA_CTX` y `VOICE_LLAMA_MAX_TOKENS` en `.env` |
-| `TimeoutExpired` en `llama-cli` | En la Pi Phi-3 puede tardar **>10 min**; sube `VOICE_LLAMA_TIMEOUT_SEC` (p. ej. `3600`) o baja `VOICE_LLAMA_MAX_TOKENS` / `VOICE_LLAMA_CTX`. Opcional: `VOICE_LLAMA_THREADS=4`. Actualiza `voice-pipeline` con `git pull`. |
-| Pipeline no termina y `llama-cli` en modo `>` (chat) | Versiones nuevas activan modo conversación por defecto. El script ya usa **`-no-cnv`** y **`--simple-io`**; `git pull` y vuelve a ejecutar. Prueba manual: `llama-cli ... -p "hola" -n 32 -no-cnv --simple-io < /dev/null` |
+| `TimeoutExpired` en `llama-completion` | En la Pi Phi-3 puede tardar **>10 min**; sube `VOICE_LLAMA_TIMEOUT_SEC` (p. ej. `3600`) o baja `VOICE_LLAMA_MAX_TOKENS` / `VOICE_LLAMA_CTX`. Opcional: `VOICE_LLAMA_THREADS=4`. Actualiza `voice-pipeline` con `git pull`. |
+| Pipeline no termina y el proceso queda en `>` (chat) | Lee **§7.1**. Usa **`llama-completion`** (no `llama-cli`), **`--no-conversation`**, **`-st`**, prueba con **`< /dev/null`**. Asegura **`LLAMA_COMPLETION`** en `.env`. No pongas **`VOICE_LLAMA_MAX_TOKENS=-1`**. |
 | Piper no encuentra la voz | Nombres y rutas de `.onnx` y `.onnx.json` en `.env` |
 
 Documentación adicional: [`04-offline-voice-pipeline.md`](04-offline-voice-pipeline.md), [`voice-pipeline/MODELS.md`](voice-pipeline/MODELS.md), [`voice-pipeline/CHECKLIST.md`](voice-pipeline/CHECKLIST.md).

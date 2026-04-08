@@ -55,7 +55,7 @@ cmake -B build
 cmake --build build -j "$(nproc)"
 ```
 
-Exporta **`LLAMA_CLI`** al binario `llama-cli` (o el nombre que use tu build). Descarga **un** archivo **Phi-3-mini-4k-instruct** en **GGUF** con cuantización **Q4_K_M** o **Q4_0** y colócalo en `~/voice-models/llm/`. Exporta **`PHI3_GGUF`**.
+Exporta **`LLAMA_COMPLETION`** al binario **`llama-completion`** (inferencia batch; no uses `llama-cli` para scripts: es la UI de chat). Descarga **un** archivo **Phi-3-mini-4k-instruct** en **GGUF** con cuantización **Q4_K_M** o **Q4_0** y colócalo en `~/voice-models/llm/`. Exporta **`PHI3_GGUF`**. Si solo tienes **`LLAMA_CLI`**, el pipeline lo acepta si apunta al mismo binario `llama-completion`.
 
 **Prueba aislada:**
 
