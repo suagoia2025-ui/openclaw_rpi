@@ -152,11 +152,11 @@ def run_llama(
         cmd.extend(["-t", threads])
     proc = subprocess.run(
         cmd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
         timeout=timeout_sec,
         stdin=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
     )
     if proc.returncode != 0:
         tail = (proc.stdout or "")[-6000:]
