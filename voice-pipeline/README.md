@@ -30,4 +30,12 @@ cd voice-pipeline && set -a && source .env && set +a
 
 Salida por defecto: `/tmp/pipeline_reply.wav`. Otro path: `./scripts/live_mic_pipeline.sh /tmp/respuesta.wav`. Logs intermedios (p. ej. `llm_raw.txt`): `./scripts/live_mic_pipeline.sh /tmp/salida.wav --log-dir /tmp/voice-debug` (crea el directorio si hace falta).
 
+### Comprobar que el micrófono capta tu voz
+
+1. **`STT listo (N chars)`** — si **N** es muy bajo o **0**, el audio puede ser silencio o muy bajo.
+2. Con **`--log-dir /tmp/voice-debug`**, revisa **`stt.txt`** (texto que Whisper entendió) y **`llm_raw.txt`** (respuesta del modelo antes del filtro).
+3. En `.env`, **`VOICE_DEBUG_SAVE_RECORDING=/tmp/ultima_pregunta.wav`** — tras grabar, escucha: `aplay -D plughw:2,0 -r 16000 -f S16_LE -c 1 /tmp/ultima_pregunta.wav` (ajusta `-D` y tarjeta).
+4. Prueba aislada: `arecord -D plughw:3,0 -f S16_LE -c 1 -r 16000 -d 5 /tmp/test.wav` y luego `aplay` con el mismo dispositivo de salida HDMI.
+5. **Volumen de captura:** `alsamixer -c 3` (F4 = Capture en muchas versiones) y sube el mic del ReSpeaker.
+
 Los binarios (`whisper.cpp`, `llama.cpp`, `piper`) deben estar instalados en la Raspberry Pi; esta carpeta solo contiene scripts y documentación.

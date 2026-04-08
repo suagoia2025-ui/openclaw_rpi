@@ -60,6 +60,11 @@ else
   arecord -f S16_LE -c 1 -r 16000 -d "$SEC" "$WAV_IN"
 fi
 
+if [[ -n "${VOICE_DEBUG_SAVE_RECORDING:-}" ]]; then
+  cp -f "$WAV_IN" "$VOICE_DEBUG_SAVE_RECORDING"
+  echo "[live-mic] Copia de la grabación: $VOICE_DEBUG_SAVE_RECORDING (16 kHz mono; prueba: aplay -r 16000 -f S16_LE -c 1 \"$VOICE_DEBUG_SAVE_RECORDING\")" >&2
+fi
+
 echo "[live-mic] Pipeline STT → LLM → TTS…" >&2
 python3 "$ROOT/scripts/voice_pipeline.py" "$WAV_IN" -o "$OUT_WAV" "${PIPE_ARGS[@]}"
 
