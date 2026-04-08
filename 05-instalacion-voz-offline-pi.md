@@ -10,16 +10,29 @@ Guía **ordenada** para pasar de “nada instalado” a poder ejecutar el pipeli
 
 - **Espacio:** al menos **~5 GB libres** en la tarjeta (modelos + compilaciones).
 - **RAM:** 4 GB; si ves cortes de memoria al cargar el LLM, configura **swap** (apartado 8).
-- **Repo del proyecto:** clona o copia `openclaw_rpi` en la Pi (o sincroniza con `git pull`) para tener la carpeta `voice-pipeline/`.
+- **Repo del proyecto:** en la Pi debe existir el clon **`openclaw_rpi`** (ruta típica **`~/openclaw_rpi`**) con la carpeta **`voice-pipeline/`**, [`env.example`](voice-pipeline/env.example) y los scripts. El archivo **`.env` no se sube a Git** (está en `.gitignore`); cada máquina lo crea a partir de `env.example`.
 
-Conéctate por SSH y actualiza paquetes:
+### 0.1 Clonar o actualizar el repositorio en la Pi
+
+```bash
+cd ~
+git clone https://github.com/suagoia2025-ui/openclaw_rpi.git
+cd ~/openclaw_rpi
+git pull origin main
+```
+
+Si ya tenías el clon, basta con `cd ~/openclaw_rpi && git pull origin main`. Ajusta la URL si usas otro remoto o SSH.
+
+Conéctate por SSH y actualiza paquetes (incluye dependencias para compilar y para **Piper** / `espeak-ng`):
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential cmake git wget curl ffmpeg python3 python3-pip pkg-config
+sudo apt install -y build-essential cmake git wget curl ffmpeg python3 python3-pip pkg-config \
+  espeak-ng libespeak-ng1
 ```
 
 ---
+
 
 ## 1. Carpetas para modelos
 
@@ -108,18 +121,50 @@ Prueba mínima:
 
 ## 4. Piper (TTS) y voz en español
 
-### 4.1 Binario `piper`
+### 4.1 Binario `piper` (Linux ARM64, solo en la Pi)
 
-En [releases de Piper](https://github.com/rhasspy/piper/releases) busca un paquete para **Linux ARM64** (a veces `aarch64`). Descárgalo y descomprime; sitúa el ejecutable `piper` en un directorio del `PATH`, por ejemplo:
+Descarga el paquete **`piper_linux_aarch64.tar.gz`** desde [releases de Piper](https://github.com/rhasspy/piper/releases). **Debe instalarse en la Raspberry Pi:** el binario es para **Linux ARM64**; si lo ejecutas en un Mac verás `exec format error`.
+
+Después de descomprimir, el ejecutable suele estar en `piper/piper` junto a librerías (p. ej. `libpiper_phonemize.so.1`). **No basta con copiar solo el binario** a `~/.local/bin`: faltarán las `.so`. Instalación recomendada:
+
+```bash
+mkdir -p ~/piper-extract
+cd ~/piper-extract
+tar -xzf /ruta/al/piper_linux_aarch64.tar.gz
+mkdir -p ~/.local/opt/piper
+cp -a ~/piper-extract/piper/* ~/.local/opt/piper/
+```
+
+*(Sustituye `/ruta/al/piper_linux_aarch64.tar.gz` por donde esté el archivo en la Pi, p. ej. `~/Descargas/piper_linux_aarch64.tar.gz`.)*
+
+Crea un **wrapper** que fije `LD_LIBRARY_PATH` y un enlace en el `PATH`:
 
 ```bash
 mkdir -p ~/.local/bin
-# tras descomprimir el release, copia el binario:
-# cp ruta/al/piper ~/.local/bin/piper
-chmod +x ~/.local/bin/piper
+cat > ~/.local/bin/piper <<'EOF'
+#!/usr/bin/env bash
+PIPER_HOME="$HOME/.local/opt/piper"
+export LD_LIBRARY_PATH="$PIPER_HOME:${LD_LIBRARY_PATH:-}"
+exec "$PIPER_HOME/piper" "$@"
+EOF
+chmod +x ~/.local/bin/piper ~/.local/opt/piper/piper
 ```
 
-Comprueba que arranca: `piper --help`
+Añade `~/.local/bin` al `PATH` (sesión actual y futuras):
+
+```bash
+grep -q '.local/bin' ~/.bashrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Comprueba:
+
+```bash
+which piper
+piper --help
+```
+
+Si aparece error de `libespeak-ng.so.1`, instala los paquetes del apartado 0 (`espeak-ng`, `libespeak-ng1`).
 
 ### 4.2 Descargar una voz (español)
 
@@ -138,11 +183,13 @@ Luego en tu **`.env`** pon `PIPER_VOICE_ONNX` y `PIPER_VOICE_JSON` apuntando a *
 Prueba:
 
 ```bash
-echo "Hola, prueba de voz." | ~/.local/bin/piper \
-  --model "$HOME/voice-models/piper/es_MX-ald-medium.onnx" \
-  --config "$HOME/voice-models/piper/es_MX-ald-medium.onnx.json" \
-  --output_file /tmp/piper-test.wav
+echo "Hola, prueba de voz." | piper \
+  -m "$HOME/voice-models/piper/es_MX-ald-medium.onnx" \
+  -c "$HOME/voice-models/piper/es_MX-ald-medium.onnx.json" \
+  -f /tmp/piper-test.wav
 ```
+
+Equivalente con nombres largos: `--model`, `--config`, `--output_file`.
 
 Otras voces: navega `es/es_ES/...` o `es/es_MX/...` en el árbol del mismo repositorio y descarga el `.onnx` + `.json` del mismo directorio.
 
@@ -150,43 +197,61 @@ Otras voces: navega `es/es_ES/...` o `es/es_MX/...` en el árbol del mismo repos
 
 ## 5. Archivo `.env` del proyecto
 
-En la Pi, dentro del clon del repo:
+Plantilla en el repo: [`voice-pipeline/env.example`](voice-pipeline/env.example) (rutas **`$HOME/whisper.cpp`** y **`$HOME/llama.cpp`**, voz **`es_MX-ald-medium`**). En la Pi:
 
 ```bash
-cd ~/ruta/al/openclaw_rpi/voice-pipeline   # ajusta la ruta
-cp env.example .env
+cd ~/openclaw_rpi/voice-pipeline
+cp -n env.example .env
 nano .env
 ```
 
-Debes dejar **rutas reales** coherentes con lo anterior, por ejemplo:
+(`cp -n` no sobrescribe si `.env` ya existe.)
+
+Comprueba que coincidan con lo instalado, sobre todo:
+
+- `PHI3_GGUF` → el nombre real del `.gguf` en `~/voice-models/llm/` (`ls ~/voice-models/llm/*.gguf`).
+- `WHISPER_BIN` → `whisper-cli` o `main` según `ls ~/whisper.cpp/build/bin/`.
+
+Referencia rápida:
 
 - `WHISPER_BIN=$HOME/whisper.cpp/build/bin/whisper-cli` (o `main`)
 - `WHISPER_MODEL=$HOME/voice-models/whisper/ggml-tiny.bin`
 - `LLAMA_CLI=$HOME/llama.cpp/build/bin/llama-cli`
 - `PHI3_GGUF=$HOME/voice-models/llm/Phi-3-mini-4k-instruct-Q4_K_M.gguf`
 - `PIPER_BIN=$HOME/.local/bin/piper`
-- `PIPER_VOICE_ONNX` y `PIPER_VOICE_JSON` apuntando a los dos archivos de la voz (p. ej. `es_MX-ald-medium.onnx` y `es_MX-ald-medium.onnx.json` si seguiste el apartado 4.2).
+- `PIPER_VOICE_ONNX` / `PIPER_VOICE_JSON` → archivos `es_MX-ald-medium` en `~/voice-models/piper/`
 
-Guarda el archivo.
+Tras editar:
+
+```bash
+set -a && source ~/openclaw_rpi/voice-pipeline/.env && set +a
+echo "$WHISPER_BIN" "$PHI3_GGUF"
+```
 
 ---
 
 ## 6. Pipeline completo
 
 ```bash
-cd ~/ruta/al/openclaw_rpi/voice-pipeline
+cd ~/openclaw_rpi/voice-pipeline
 set -a && source .env && set +a
 ffmpeg -y -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test16k.wav
 python3 scripts/voice_pipeline.py /tmp/test16k.wav -o /tmp/reply.wav --log-dir /tmp/voice-run
 ```
 
-Si termina bien, deberías tener `/tmp/reply.wav`. Para escuchar (si tienes salida de audio):
+Si termina bien, deberías ver `OK: /tmp/reply.wav`. Para escuchar (si tienes salida de audio):
 
 ```bash
 aplay /tmp/reply.wav
 ```
 
-*(La frecuencia de muestreo la define Piper; si `aplay` falla, prueba con `ffplay` o revisa el `.json` de la voz.)*
+Si el tono o la velocidad no cuadran, la voz suele ser **22050 Hz** mono; prueba:
+
+```bash
+aplay -r 22050 -f S16_LE -c 1 /tmp/reply.wav
+```
+
+*(La frecuencia exacta está en el `.json` de la voz.)*
 
 ---
 
@@ -195,9 +260,12 @@ aplay /tmp/reply.wav
 | Síntoma | Qué revisar |
 |--------|-------------|
 | `command not found` en whisper/llama | Rutas en `.env` y que existan los binarios en `build/bin/` |
+| `command not found` para `piper` | `echo $PATH` debe incluir `~/.local/bin`; `source ~/.bashrc` o ruta completa `~/.local/bin/piper` |
+| `libespeak-ng.so.1` | `sudo apt install -y espeak-ng libespeak-ng1` |
+| `libpiper_phonemize.so.1` | Instalación completa en `~/.local/opt/piper` + wrapper con `LD_LIBRARY_PATH` (apartado 4.1) |
 | Error al descargar GGUF | Conexión, espacio en disco, o descarga manual desde Hugging Face |
 | Proceso muere por memoria | Swap (apartado 8), bajar `VOICE_LLAMA_CTX` y `VOICE_LLAMA_MAX_TOKENS` en `.env` |
-| Piper no encuentra la voz | Nombres y rutas de `.onnx` y `.onnx.json` |
+| Piper no encuentra la voz | Nombres y rutas de `.onnx` y `.onnx.json` en `.env` |
 
 Documentación adicional: [`04-offline-voice-pipeline.md`](04-offline-voice-pipeline.md), [`voice-pipeline/MODELS.md`](voice-pipeline/MODELS.md), [`voice-pipeline/CHECKLIST.md`](voice-pipeline/CHECKLIST.md).
 
@@ -217,4 +285,4 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ---
 
-*Instalación probada conceptualmente en Debian 13 (trixie) ARM64; ajusta nombres de binarios si tu versión de whisper.cpp/llama.cpp difiere.*
+*Instalación alineada con el repositorio actual (`env.example`, scripts en `voice-pipeline/`). Debian 13 (trixie) ARM64; ajusta nombres de binarios si tu versión de whisper.cpp/llama.cpp difiere.*
