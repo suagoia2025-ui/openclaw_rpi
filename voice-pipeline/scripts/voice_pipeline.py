@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 REPO_VOICE = Path(__file__).resolve().parent.parent
-DEFAULT_SYSTEM = REPO_VOICE / "prompts" / "system_child_educational.txt"
+DEFAULT_SYSTEM = REPO_VOICE / "prompts" / "system_general.txt"
 FILTER_SCRIPT = REPO_VOICE / "scripts" / "output_filter.py"
 
 # Marcador de fin de secuencia de llama.cpp; a veces queda pegado al texto generado.

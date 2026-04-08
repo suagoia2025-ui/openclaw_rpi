@@ -1,6 +1,6 @@
 # Pipeline de voz offline en Raspberry Pi 4 (STT → LLM → TTS)
 
-Asistente educativo local para **niños de 2 a 7 años**: **Whisper tiny** → **Phi-3-mini GGUF** → **Piper** voz **`es_CO-female-medium`**, sin llamadas HTTP en inferencia. **SO de referencia:** Debian GNU/Linux **13 (trixie)** ARM64 (véase [`README.md`](README.md)).
+Asistente de voz local para **público general** (prompt por defecto en español): **Whisper tiny** → **Phi-3-mini GGUF** → **Piper** voz **`es_CO-female-medium`**, sin llamadas HTTP en inferencia. **Filtro infantil** opcional con **`VOICE_OUTPUT_FILTER=1`**. **SO de referencia:** Debian GNU/Linux **13 (trixie)** ARM64 (véase [`README.md`](README.md)).
 
 Código y scripts: carpeta [`voice-pipeline/`](voice-pipeline/).
 
@@ -81,7 +81,7 @@ echo "Hola, esto es una prueba." | bash voice-pipeline/scripts/tts_piper.sh /tmp
 
 ## 6. Pipeline completo y filtro infantil (opcional)
 
-- **System prompt:** [`voice-pipeline/prompts/system_child_educational.txt`](voice-pipeline/prompts/system_child_educational.txt) (sobreescribible con **`VOICE_SYSTEM_PROMPT`**).
+- **System prompt:** [`voice-pipeline/prompts/system_general.txt`](voice-pipeline/prompts/system_general.txt) (sobreescribible con **`VOICE_SYSTEM_PROMPT`**).
 - Por defecto la salida del **LLM va directo a Piper**. Filtro: **`VOICE_OUTPUT_FILTER=1`** en `.env` → [`voice-pipeline/scripts/output_filter.py`](voice-pipeline/scripts/output_filter.py) + [`voice-pipeline/filter/blocked_terms.txt`](voice-pipeline/filter/blocked_terms.txt).
 
 **Ejecución:**

@@ -1,6 +1,6 @@
 # Pipeline de voz offline (STT → LLM → TTS)
 
-Implementación del cambio OpenSpec `offline-voice-pipeline-pi4`: **Whisper tiny** (whisper.cpp) → **Phi-3-mini GGUF** (llama.cpp) → **Piper** `es_CO-female-medium`, con **system prompt** opcional. El **filtro infantil** (`output_filter.py`) solo corre si defines **`VOICE_OUTPUT_FILTER=1`** en `.env`.
+Implementación del cambio OpenSpec `offline-voice-pipeline-pi4`: **Whisper tiny** (whisper.cpp) → **Phi-3-mini GGUF** (llama.cpp) → **Piper** `es_CO-female-medium`, con **system prompt** por defecto para público general (`prompts/system_general.txt`). El **filtro infantil** (`output_filter.py`) solo corre si defines **`VOICE_OUTPUT_FILTER=1`** en `.env`.
 
 ## Documentación principal
 
