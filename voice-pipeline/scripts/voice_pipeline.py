@@ -77,40 +77,172 @@ def build_phi3_prompt(system: str, user_text: str) -> str:
     )
 
 
+def _line_is_llama_noise(s: str) -> bool:
+    """True si la línea parece log/métrica/código de llama.cpp (no debe ir a Piper)."""
+    t = s.strip()
+    if not t:
+        return False
+    if re.match(
+        r"^(main:|llama_|load:|print_info:|sched_|sampler |encoding|gguf|common_init|"
+        r"llama_context|llama_kv|llama_model|llama_memory|whisper|Running|==|generate:|"
+        r"system_info:|ggml_|print_timings|common_perf|common_|sched_reserve|load_tensors|"
+        r"print_info:|llama_params|llama_sampler|token to piece|^\s*\.+\s*$)",
+        t,
+        re.I,
+    ):
+        return True
+    if re.match(r"^\s*#(include|define|pragma|if|ifdef|ifndef|endif|else|elif)\b", t, re.I):
+        return True
+    if re.match(r"^\s*(def |async def |class |import |from |public:|private:|protected:)", t):
+        return True
+    if re.search(
+        r"(^common_perf_print:|\b(t/s|tokens per|ms per|eval time|sampling time|load time|prompt eval|"
+        r"unaccounted|graphs reused|memory breakdown|MiB|KV buffer|Flash.?Attn|"
+        r"n_ctx|n_batch|n_predict|n_keep|threadpool|backend init)\b)",
+        t,
+        re.I,
+    ):
+        return True
+    if re.search(
+        r"\b(void|int|char|bool|size_t|uint\d*_t|std::|template|namespace|nullptr|"
+        r"static_cast|reinterpret_cast|constexpr|typedef|struct |enum )\b",
+        t,
+    ):
+        return True
+    if "::" in t and re.search(r"\b[a-z_][a-z0-9_]*::", t, re.I):
+        return True
+    sym = sum(1 for c in t if c in "()[]{}<>;=&|!+-*/%")
+    if sym >= 6 and sym * 3 > len(t):
+        return True
+    if ("{" in t or "}" in t) and sym >= 3:
+        return True
+    if t.rstrip().endswith(";") and "(" in t and ")" in t:
+        return True
+    if re.match(r"^[\d\s\.\,\-\:\/\|\%\+\=\(\)x\*]+$", t) and len(t) > 5:
+        return True
+    if re.search(r"=\s*\d", t) and re.search(r"\d{3,}", t) and len(t) < 120:
+        return True
+    if len(t) > 160 and t.count(" ") < 4:
+        return True
+    return False
+
+
+def _strip_special_tokens(s: str) -> str:
+    return re.sub(r"<\|[^|]+\|>", "", s).strip()
+
+
+def _strip_markdown_fences(s: str) -> str:
+    """Quita bloques ``` ... ``` (el modelo a veces inventa código; Piper no debe leerlo)."""
+    s = re.sub(r"(?s)```[a-zA-Z0-9_-]*\s*\r?\n.*?```", " ", s)
+    return re.sub(r"```+", " ", s).strip()
+
+
+def _line_looks_like_speech_line(line: str) -> bool:
+    """True si la línea parece frase hablada (español), no basura numérica ni pseudo-código."""
+    t = line.strip()
+    if not t:
+        return False
+    if "```" in t or t.startswith("`") or t.endswith("`"):
+        return False
+    if "{" in t or "}" in t:
+        return False
+    if "::" in t:
+        return False
+    if t.rstrip().endswith(";") and "(" in t:
+        return False
+    letters = sum(1 for c in t if c.isalpha())
+    digits = sum(1 for c in t if c.isdigit())
+    if letters + digits == 0:
+        return False
+    if digits > max(2, letters * 0.35):
+        return False
+    if letters < 6 and len(t) < 28:
+        return letters >= 2 and any(c in t.lower() for c in "aeiouáéíóú")
+    low = t.lower()
+    vowels = sum(1 for c in low if c in "aeiouáéíóú")
+    return vowels >= 2 and vowels >= max(2, letters // 6)
+
+
+def _prefer_last_prose_paragraph(s: str) -> str:
+    """Si hay basura delante y la respuesta buena al final, quedarse con el último bloque con sentido."""
+    s = s.strip()
+    if not s:
+        return s
+    lines = [ln.strip() for ln in s.split("\n") if ln.strip()]
+    runs: list[list[str]] = []
+    cur: list[str] = []
+    for ln in lines:
+        if _line_looks_like_speech_line(ln):
+            cur.append(ln)
+        else:
+            if cur:
+                runs.append(cur)
+                cur = []
+    if cur:
+        runs.append(cur)
+    if len(runs) >= 2:
+        return "\n".join(runs[-1]).strip()
+    if len(runs) == 1 and len(lines) >= 2:
+        return "\n".join(runs[0]).strip()
+    parts = [p.strip() for p in re.split(r"\n\s*\n+", s) if p.strip()]
+    if len(parts) >= 2:
+        for p in reversed(parts):
+            if len(p) < 20:
+                continue
+            low = p.lower()
+            if sum(1 for c in low if c in "aeiouáéíóú") >= max(3, len(p) // 25):
+                return p
+    return s
+
+
+def _clean_model_lines(body: str) -> str:
+    lines_out: list[str] = []
+    for li in body.splitlines():
+        if _line_is_llama_noise(li):
+            continue
+        lines_out.append(li)
+    text = "\n".join(lines_out).strip()
+    text = _strip_special_tokens(text)
+    text = _strip_markdown_fences(text)
+    return _prefer_last_prose_paragraph(text)
+
+
 def extract_llama_completion_text(raw: str) -> str:
-    """Obtiene el texto generado de la salida de llama-completion (simple-io / métricas al final)."""
+    """Obtiene solo el texto hablado para TTS, sin logs ni métricas de llama-completion."""
     raw = (raw or "").replace("\r\n", "\n").strip()
     if not raw:
         return ""
+    # Puede haber ruido antes del primer Answer; el último bloque suele ser la generación actual.
+    blocks = re.findall(
+        r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[end of text\])",
+        raw,
+    )
+    if blocks:
+        return _clean_model_lines(blocks[-1])
     m = re.search(
         r"(?ms)^#?\s*Answer\s*\n(.*?)(?=\n\s*\[end of text\]|\ncommon_perf_print:|\Z)",
         raw,
     )
     if m and m.group(1).strip():
-        return m.group(1).strip()
+        return _clean_model_lines(m.group(1))
     if "<|assistant|>" in raw:
         tail = re.sub(r"^[\s\S]*?<\|assistant\|>\s*", "", raw, count=1)
         tail = re.sub(r"\n\s*\[end of text\].*", "", tail, flags=re.I | re.DOTALL)
-        return tail.strip()
+        return _clean_model_lines(tail)
     head = re.split(r"\ncommon_perf_print:", raw, maxsplit=1)[0]
     head = re.split(r"\n\s*\[end of text\]", head, maxsplit=1, flags=re.I)[0]
-    lines: list[str] = []
+    lines_kept: list[str] = []
     for li in head.split("\n"):
         s = li.strip()
         if not s:
-            if lines:
-                lines.append("")
+            if lines_kept:
+                lines_kept.append("")
             continue
-        if re.match(
-            r"^(main:|llama_|load:|print_info:|sched_|sampler |encoding|gguf|common_init|"
-            r"llama_context|llama_kv|llama_model|llama_memory|whisper|Running|==|generate:|"
-            r"system_info:|ggml_|print_timings|common_perf)",
-            s,
-            re.I,
-        ):
+        if _line_is_llama_noise(li):
             continue
-        lines.append(li)
-    return "\n".join(lines).strip()
+        lines_kept.append(li)
+    tail = _strip_markdown_fences(_strip_special_tokens("\n".join(lines_kept).strip()))
+    return _prefer_last_prose_paragraph(tail)
 
 
 def run_llama(
@@ -122,7 +254,7 @@ def run_llama(
     timeout_sec: int,
     threads: str | None,
     work_debug: Path | None = None,
-) -> str:
+) -> tuple[str, str]:
     # Usar llama-completion (herramienta "completion"), no llama-cli: desde ~2025 llama-cli es
     # solo UI de chat; -no-cnv ahí muestra error y sigue en bucle `>` (upstream: usar llama-completion).
     # -n -1 en llama.cpp = generar hasta llenar contexto (parece “infinito”).
@@ -164,9 +296,7 @@ def run_llama(
     # Unificar flujo como en terminal: la respuesta suele ir con logs; # Answer es lo habitual.
     combined = (proc.stdout or "").replace("\r\n", "\n")
     text = extract_llama_completion_text(combined)
-    if not text.strip() and work_debug is not None:
-        (work_debug / "llama_merged_raw.txt").write_text(combined[-200000:], encoding="utf-8")
-    return text
+    return text, combined
 
 
 def run_filter(py: str, text: str) -> str:
@@ -201,7 +331,7 @@ def main() -> int:
     ap.add_argument(
         "--log-dir",
         type=Path,
-        help="Guardar stt.txt, llm_raw.txt y (si filtro activo) llm_filtered.txt",
+        help="Guardar stt.txt, llama_stdout.txt (salida cruda), llm_raw.txt (texto ya extraído para TTS), etc.",
     )
     args = ap.parse_args()
 
@@ -279,7 +409,7 @@ def main() -> int:
             flush=True,
         )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
-        raw_reply = run_llama(
+        extracted, llama_stdout = run_llama(
             llama_bin,
             Path(phi3),
             full_prompt,
@@ -289,6 +419,9 @@ def main() -> int:
             llama_threads,
             work,
         )
+        if args.log_dir:
+            (work / "llama_stdout.txt").write_text(llama_stdout[-500_000:], encoding="utf-8")
+        raw_reply = extracted
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
         if use_output_filter:
             print("[voice-pipeline] 3/4 Filtro de salida…", flush=True)
