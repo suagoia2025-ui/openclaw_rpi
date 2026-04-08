@@ -26,7 +26,9 @@ def read_system_prompt() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def run_whisper(whisper_bin: str, model: str, wav: Path, work: Path) -> str:
+def run_whisper(
+    whisper_bin: str, model: str, wav: Path, work: Path, timeout_sec: int
+) -> str:
     out_txt = work / "stt.txt"
     # whisper.cpp: -nt sin marcas de tiempo si está disponible; si falla, quitar -nt del comando.
     cmd = [whisper_bin, "-m", model, "-f", str(wav), "-nt"]
@@ -34,7 +36,7 @@ def run_whisper(whisper_bin: str, model: str, wav: Path, work: Path) -> str:
         cmd,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=timeout_sec,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"whisper falló: {proc.stderr or proc.stdout}")
@@ -72,6 +74,8 @@ def run_llama(
     prompt: str,
     ctx: int,
     max_tokens: int,
+    timeout_sec: int,
+    threads: str | None,
 ) -> str:
     cmd = [
         llama_cli,
@@ -85,11 +89,13 @@ def run_llama(
         str(max_tokens),
         "--no-display-prompt",
     ]
+    if threads:
+        cmd.extend(["-t", threads])
     proc = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=timeout_sec,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"llama-cli falló: {proc.stderr}")
@@ -140,6 +146,9 @@ def main() -> int:
     piper_json = os.environ.get("PIPER_VOICE_JSON", "")
     ctx = int(os.environ.get("VOICE_LLAMA_CTX", "2048"))
     ntok = int(os.environ.get("VOICE_LLAMA_MAX_TOKENS", "128"))
+    llama_timeout = int(os.environ.get("VOICE_LLAMA_TIMEOUT_SEC", "2400"))
+    whisper_timeout = int(os.environ.get("VOICE_WHISPER_TIMEOUT_SEC", "900"))
+    llama_threads = os.environ.get("VOICE_LLAMA_THREADS", "").strip() or None
 
     for name, val in [
         ("WHISPER_BIN", whisper_bin),
@@ -164,9 +173,13 @@ def main() -> int:
         if args.log_dir:
             work.mkdir(parents=True, exist_ok=True)
 
-        transcript = run_whisper(whisper_bin, whisper_model, args.input_wav, work)
+        transcript = run_whisper(
+            whisper_bin, whisper_model, args.input_wav, work, whisper_timeout
+        )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
-        raw_reply = run_llama(llama_cli, Path(phi3), full_prompt, ctx, ntok)
+        raw_reply = run_llama(
+            llama_cli, Path(phi3), full_prompt, ctx, ntok, llama_timeout, llama_threads
+        )
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
         filtered = run_filter(py, raw_reply)
         (work / "llm_filtered.txt").write_text(filtered, encoding="utf-8")
