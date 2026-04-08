@@ -27,11 +27,19 @@ def read_system_prompt() -> str:
 
 
 def run_whisper(
-    whisper_bin: str, model: str, wav: Path, work: Path, timeout_sec: int
+    whisper_bin: str,
+    model: str,
+    wav: Path,
+    work: Path,
+    timeout_sec: int,
+    language: str | None,
 ) -> str:
     out_txt = work / "stt.txt"
     # whisper.cpp: -nt sin marcas de tiempo si está disponible; si falla, quitar -nt del comando.
+    # Sin -l, whisper-cli suele usar inglés por defecto → basura tipo "The K" con voz en español.
     cmd = [whisper_bin, "-m", model, "-f", str(wav), "-nt"]
+    if language and language.lower() != "auto":
+        cmd.extend(["-l", language])
     proc = subprocess.run(
         cmd,
         capture_output=True,
@@ -166,6 +174,7 @@ def main() -> int:
         ntok = 128
     llama_timeout = int(os.environ.get("VOICE_LLAMA_TIMEOUT_SEC", "2400"))
     whisper_timeout = int(os.environ.get("VOICE_WHISPER_TIMEOUT_SEC", "900"))
+    whisper_lang = (os.environ.get("VOICE_WHISPER_LANGUAGE") or "es").strip()
     llama_threads = os.environ.get("VOICE_LLAMA_THREADS", "").strip() or None
 
     if not llama_bin:
@@ -206,7 +215,12 @@ def main() -> int:
 
         print("[voice-pipeline] 1/4 STT (Whisper)...", flush=True)
         transcript = run_whisper(
-            whisper_bin, whisper_model, args.input_wav, work, whisper_timeout
+            whisper_bin,
+            whisper_model,
+            args.input_wav,
+            work,
+            whisper_timeout,
+            whisper_lang or None,
         )
         print(f"[voice-pipeline] STT listo ({len(transcript)} chars). 2/4 LLM (Phi-3)…", flush=True)
         print(
