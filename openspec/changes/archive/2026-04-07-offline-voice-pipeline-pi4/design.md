@@ -1,3 +1,5 @@
+> **Spec canónico (fuente de verdad actual):** [`openspec/specs/offline-voice-pipeline/spec.md`](../../../specs/offline-voice-pipeline/spec.md) — este design y la carpeta del archive son **histórico** del cambio archivado.
+
 ## Context
 
 La Raspberry Pi 4 del proyecto ya ejecuta **OpenClaw** con gateway en loopback y canales como Telegram; el modelo por defecto es remoto. **SO de referencia en el repo:** **Debian GNU/Linux 13 (trixie)** ARM64 (alineado con `README.md` y `cat /etc/os-release` en el host documentado). Este diseño describe un **camino paralelo**: inferencia 100 % local para voz, sin depender de red en la ruta crítica STT/LLM/TTS. Restricciones típicas: **4 GB RAM** (swap opcional), **ARM64**, almacenamiento en microSD, sin GPU NVIDIA.
