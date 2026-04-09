@@ -186,7 +186,31 @@ def _line_is_llama_noise(s: str) -> bool:
         return True
     if _RE_END_OF_TEXT_BRACKET.fullmatch(t) or re.match(r"(?i)^\s*end\s+of\s+text\s*$", t):
         return True
+    if re.match(
+        r"(?i)^\s*\(?\s*translation\s*:",
+        t,
+    ) or re.match(r"(?i)^\s*\(?\s*traducci[oó]n\s*:", t):
+        return True
+    if re.match(r"(?i)^\s*\(?\s*in english\s*:", t):
+        return True
     return False
+
+
+def _strip_bilingual_translation_note(s: str) -> str:
+    """Quita bloques (Translation: …) / traducción al inglés que el modelo a veces añade."""
+    if not s:
+        return s
+    for pat in (
+        r"(?is)\n\s*\(\s*translation\s*:.*",
+        r"(?is)\n\s*\(\s*traducci[oó]n\s*:.*",
+        r"(?is)\n\s*translation\s*:\s*.*",
+        r"(?is)\n\s*\[en inglés\]\s*:?.*",
+        r"(?is)\n\s*\(\s*in english\s*:.*",
+    ):
+        s = re.split(pat, s, maxsplit=1)[0]
+    s = re.sub(r"(?is)\s*\(\s*translation\s*:\s*[^)]{1,4000}\)", "", s)
+    s = re.sub(r"(?is)\s*\(\s*traducci[oó]n\s*:\s*[^)]{1,4000}\)", "", s)
+    return s.strip()
 
 
 def _strip_end_of_text_markers(s: str) -> str:
@@ -285,6 +309,11 @@ def _line_looks_like_speech_line(line: str) -> bool:
         return False
     if t.lstrip().startswith("*") and re.search(r"(?i)instrucci[oó]n", t):
         return False
+    if re.match(r"(?i)^\s*\(?\s*translation\s*:", t) or re.match(
+        r"(?i)^\s*\(?\s*traducci[oó]n\s*:",
+        t,
+    ):
+        return False
     letters = sum(1 for c in t if c.isalpha())
     digits = sum(1 for c in t if c.isdigit())
     if letters + digits == 0:
@@ -344,6 +373,7 @@ def _clean_model_lines(body: str) -> str:
     text = _prefer_last_prose_paragraph(text)
     text = _strip_assistant_meta_tail(text)
     text = _strip_rubric_leakage(text)
+    text = _strip_bilingual_translation_note(text)
     return _strip_end_of_text_markers(text)
 
 
@@ -392,6 +422,7 @@ def extract_llama_completion_text(raw: str) -> str:
     tail = _prefer_last_prose_paragraph(tail)
     tail = _strip_assistant_meta_tail(tail)
     tail = _strip_rubric_leakage(tail)
+    tail = _strip_bilingual_translation_note(tail)
     return _strip_end_of_text_markers(tail)
 
 
