@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -431,7 +432,7 @@ def main() -> int:
     ap.add_argument(
         "--log-dir",
         type=Path,
-        help="Guardar stt.txt, llama_stdout.txt (salida cruda), llm_raw.txt (texto ya extraído para TTS), etc.",
+        help="Guardar stt.txt, llama_stdout.txt, llm_raw.txt, pipeline_timings.txt (segundos por etapa), etc.",
     )
     args = ap.parse_args()
 
@@ -493,7 +494,9 @@ def main() -> int:
             work.mkdir(parents=True, exist_ok=True)
 
         ntot = 4 if use_output_filter else 3
+        t0 = time.perf_counter()
         print(f"[voice-pipeline] 1/{ntot} STT (Whisper)...", flush=True)
+        t_stt0 = time.perf_counter()
         transcript = run_whisper(
             whisper_bin,
             whisper_model,
@@ -502,13 +505,19 @@ def main() -> int:
             whisper_timeout,
             whisper_lang or None,
         )
-        print(f"[voice-pipeline] STT listo ({len(transcript)} chars). 2/{ntot} LLM (Phi-3)…", flush=True)
+        stt_sec = time.perf_counter() - t_stt0
+        print(
+            f"[voice-pipeline] STT listo ({len(transcript)} chars) en {stt_sec:.1f} s. "
+            f"2/{ntot} LLM (Phi-3)…",
+            flush=True,
+        )
         print(
             "[voice-pipeline]    En RPi puede tardar 10–40+ min; timeout="
             f"{llama_timeout}s. Ctrl+C para cancelar.",
             flush=True,
         )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
+        t_llm0 = time.perf_counter()
         extracted, llama_stdout = run_llama(
             llama_bin,
             Path(phi3),
@@ -519,13 +528,19 @@ def main() -> int:
             llama_threads,
             work,
         )
+        llm_sec = time.perf_counter() - t_llm0
+        print(f"[voice-pipeline] LLM listo en {llm_sec:.1f} s.", flush=True)
         if args.log_dir:
             (work / "llama_stdout.txt").write_text(llama_stdout[-500_000:], encoding="utf-8")
         raw_reply = extracted
         (work / "llm_raw.txt").write_text(raw_reply, encoding="utf-8")
+        filter_sec = 0.0
         if use_output_filter:
             print("[voice-pipeline] 3/4 Filtro de salida…", flush=True)
+            t_f0 = time.perf_counter()
             tts_text = run_filter(sys.executable, raw_reply)
+            filter_sec = time.perf_counter() - t_f0
+            print(f"[voice-pipeline] Filtro listo en {filter_sec:.1f} s.", flush=True)
             (work / "llm_filtered.txt").write_text(tts_text, encoding="utf-8")
             print("[voice-pipeline] 4/4 TTS (Piper)…", flush=True)
         else:
@@ -533,7 +548,32 @@ def main() -> int:
             print("[voice-pipeline] 3/3 TTS (Piper), salida directa del LLM…", flush=True)
         if not tts_text.strip():
             tts_text = "No tengo respuesta en este momento."
+        t_p0 = time.perf_counter()
         run_piper(piper_bin, Path(piper_onnx), Path(piper_json), tts_text, out_wav)
+        piper_sec = time.perf_counter() - t_p0
+        print(f"[voice-pipeline] Piper listo en {piper_sec:.1f} s.", flush=True)
+
+        total_sec = time.perf_counter() - t0
+        print(
+            f"[voice-pipeline] Tiempos: STT {stt_sec:.1f} s · LLM {llm_sec:.1f} s"
+            + (f" · filtro {filter_sec:.1f} s" if use_output_filter else "")
+            + f" · Piper {piper_sec:.1f} s · total {total_sec:.1f} s",
+            flush=True,
+        )
+        if args.log_dir:
+            lines = [
+                f"stt_sec={stt_sec:.3f}",
+                f"llm_sec={llm_sec:.3f}",
+            ]
+            if use_output_filter:
+                lines.append(f"filter_sec={filter_sec:.3f}")
+            lines.extend(
+                [
+                    f"piper_sec={piper_sec:.3f}",
+                    f"total_sec={total_sec:.3f}",
+                ]
+            )
+            (work / "pipeline_timings.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print(f"OK: {out_wav}", flush=True)
     return 0
