@@ -63,7 +63,7 @@ Exporta **`LLAMA_COMPLETION`** al binario **`llama-completion`** (inferencia bat
 bash voice-pipeline/scripts/llm_llama_cli.sh "Hola, responde en una sola frase."
 ```
 
-Ajusta **`VOICE_LLAMA_CTX`** (p. ej. 2048) y **`VOICE_LLAMA_MAX_TOKENS`** (p. ej. 128) en `.env` si la Pi se queda sin memoria.
+Ajusta **`VOICE_LLAMA_CTX`** (p. ej. 2048) y **`VOICE_LLAMA_MAX_TOKENS`** (techo; p. ej. 768) en `.env` si la Pi se queda sin memoria. El pipeline calcula **`-n`** también según **`VOICE_LLAMA_TIMEOUT_SEC`** y **`VOICE_LLAMA_EST_TOKENS_PER_SEC`** para reducir respuestas cortadas a medias.
 
 **Memoria entre etapas:** el pipeline ejecuta **procesos secuenciales** (Whisper termina antes de cargar el LLM); no mantengas ambos binarios corriendo a la vez en scripts personalizados.
 

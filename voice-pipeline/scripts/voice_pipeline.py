@@ -31,6 +31,55 @@ def read_system_prompt() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def compute_llama_output_tokens(llama_timeout_sec: int, ctx_size: int) -> tuple[int, str]:
+    """
+    Calcula -n (tokens de salida) para no cortar respuestas largas en español: sube el límite si
+    el timeout lo permite (tokens/s estimados en ARM), con techo por VOICE_LLAMA_MAX_TOKENS y por
+    espacio libre en el contexto (prompt sistema+usuario ocupa parte de -c).
+    """
+    raw = os.environ.get("VOICE_LLAMA_MAX_TOKENS", "").strip()
+    try:
+        user_cap = int(raw) if raw else 768
+    except ValueError:
+        user_cap = 768
+    user_cap = max(64, min(user_cap, 4096))
+
+    try:
+        floor_out = int(os.environ.get("VOICE_LLAMA_MIN_OUTPUT_TOKENS", "256"))
+    except ValueError:
+        floor_out = 256
+    floor_out = max(64, min(floor_out, user_cap))
+
+    try:
+        est_tps = float(os.environ.get("VOICE_LLAMA_EST_TOKENS_PER_SEC", "2.5"))
+    except ValueError:
+        est_tps = 2.5
+    est_tps = max(0.3, min(est_tps, 80.0))
+
+    try:
+        margin = float(os.environ.get("VOICE_LLAMA_TIMEOUT_TOKEN_MARGIN", "0.88"))
+    except ValueError:
+        margin = 0.88
+    margin = max(0.5, min(margin, 1.0))
+
+    from_time = int(llama_timeout_sec * est_tps * margin)
+
+    try:
+        ctx_reserve = int(os.environ.get("VOICE_LLAMA_CTX_RESERVE", "520"))
+    except ValueError:
+        ctx_reserve = 520
+    ctx_reserve = max(200, min(ctx_reserve, ctx_size - 80))
+    ctx_room = max(128, ctx_size - ctx_reserve)
+
+    n = min(user_cap, ctx_room, max(floor_out, from_time))
+    n = max(64, n)
+    detail = (
+        f"cap={user_cap} piso={floor_out} desde_timeout≈{from_time} "
+        f"ctx_libre={ctx_room} (est {est_tps} tok/s × {llama_timeout_sec}s × {margin})"
+    )
+    return n, detail
+
+
 def run_whisper(
     whisper_bin: str,
     model: str,
@@ -360,7 +409,7 @@ def run_llama(
     # solo UI de chat; -no-cnv ahí muestra error y sigue en bucle `>` (upstream: usar llama-completion).
     # -n -1 en llama.cpp = generar hasta llenar contexto (parece “infinito”).
     if max_tokens <= 0:
-        max_tokens = 128
+        max_tokens = 256
     # Ref. upstream tools/completion/completion.cpp: con modo conversación activo, si no hay
     # single_turn + prompt no vacío, se fuerza interactive_first y aparece el prompt `>`.
     # -no-cnv / --no-conversation: desactiva conversación (imprescindible con plantilla en el GGUF).
@@ -444,10 +493,6 @@ def main() -> int:
     piper_onnx = os.environ.get("PIPER_VOICE_ONNX", "")
     piper_json = os.environ.get("PIPER_VOICE_JSON", "")
     ctx = int(os.environ.get("VOICE_LLAMA_CTX", "2048"))
-    try:
-        ntok = int(os.environ.get("VOICE_LLAMA_MAX_TOKENS", "128"))
-    except ValueError:
-        ntok = 128
     llama_timeout = int(os.environ.get("VOICE_LLAMA_TIMEOUT_SEC", "2400"))
     whisper_timeout = int(os.environ.get("VOICE_WHISPER_TIMEOUT_SEC", "900"))
     whisper_lang = (os.environ.get("VOICE_WHISPER_LANGUAGE") or "es").strip()
@@ -517,6 +562,8 @@ def main() -> int:
             flush=True,
         )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
+        ntok, ntok_detail = compute_llama_output_tokens(llama_timeout, ctx)
+        print(f"[voice-pipeline] LLM -n {ntok} ({ntok_detail}).", flush=True)
         t_llm0 = time.perf_counter()
         extracted, llama_stdout = run_llama(
             llama_bin,
@@ -564,6 +611,7 @@ def main() -> int:
             lines = [
                 f"stt_sec={stt_sec:.3f}",
                 f"llm_sec={llm_sec:.3f}",
+                f"llama_max_tokens={ntok}",
             ]
             if use_output_filter:
                 lines.append(f"filter_sec={filter_sec:.3f}")
