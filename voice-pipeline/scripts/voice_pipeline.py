@@ -510,6 +510,14 @@ def run_llama(
     )
     if proc.returncode != 0:
         tail = (proc.stdout or "")[-6000:]
+        if "prompt is too long" in tail.lower():
+            raise RuntimeError(
+                "llama-completion: el prompt (plantilla Phi-3 + system + transcripción) no cabe "
+                f"en el contexto -c={ctx}. Sube VOICE_LLAMA_CTX en voice-pipeline/.env "
+                "(recomendado 2048; en tu log aparecía n_ctx=512). "
+                "Si necesitas forzar un contexto pequeño por RAM, define VOICE_LLAMA_ALLOW_SMALL_CTX=1 "
+                "y acorta el system prompt o la grabación.\n---\n" + tail[-3500:]
+            )
         raise RuntimeError(f"llama-completion falló: {tail}")
     # Unificar flujo como en terminal: la respuesta suele ir con logs; # Answer es lo habitual.
     combined = (proc.stdout or "").replace("\r\n", "\n")
@@ -560,7 +568,31 @@ def main() -> int:
     piper_bin = os.environ.get("PIPER_BIN", "")
     piper_onnx = os.environ.get("PIPER_VOICE_ONNX", "")
     piper_json = os.environ.get("PIPER_VOICE_JSON", "")
-    ctx = int(os.environ.get("VOICE_LLAMA_CTX", "2048"))
+    try:
+        ctx = int(os.environ.get("VOICE_LLAMA_CTX", "2048"))
+    except ValueError:
+        print("VOICE_LLAMA_CTX debe ser un entero (p. ej. 2048).", file=sys.stderr)
+        return 2
+    allow_small = os.environ.get("VOICE_LLAMA_ALLOW_SMALL_CTX", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if ctx < 1024 and not allow_small:
+        print(
+            "[voice-pipeline] VOICE_LLAMA_CTX es demasiado pequeño para Phi-3 + system + STT "
+            f"(tienes {ctx}; hace falta al menos ~1024, recomendado 2048). "
+            "Edita voice-pipeline/.env y pon: export VOICE_LLAMA_CTX=2048 "
+            "(o define VOICE_LLAMA_ALLOW_SMALL_CTX=1 solo si sabes que tu prompt cabe).",
+            file=sys.stderr,
+        )
+        return 2
+    if ctx < 2048 and not allow_small:
+        print(
+            "[voice-pipeline] Aviso: VOICE_LLAMA_CTX<2048; con system prompt largo puede fallar con "
+            "'prompt is too long'. Recomendado 2048.",
+            file=sys.stderr,
+        )
     llama_timeout = int(os.environ.get("VOICE_LLAMA_TIMEOUT_SEC", "2400"))
     whisper_timeout = int(os.environ.get("VOICE_WHISPER_TIMEOUT_SEC", "900"))
     whisper_lang = (os.environ.get("VOICE_WHISPER_LANGUAGE") or "es").strip()
