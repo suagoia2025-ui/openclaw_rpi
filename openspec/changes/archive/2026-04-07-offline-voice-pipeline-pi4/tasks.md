@@ -1,3 +1,5 @@
+> **Spec canónico (fuente de verdad actual):** [`openspec/specs/offline-voice-pipeline/spec.md`](../../../specs/offline-voice-pipeline/spec.md) — esta carpeta y estas tareas son **histórico** del cambio archivado.
+
 ## 1. Estructura y modelos locales
 
 - [x] 1.1 Definir y documentar directorio de modelos (p. ej. `~/voice-models/` o `/opt/voice-models/`) y variables de entorno para rutas

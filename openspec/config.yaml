@@ -1,13 +1,13 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Requisitos del producto: actualizar solo este archivo como fuente de verdad.
+canonical_spec: openspec/specs/offline-voice-pipeline/spec.md
+
+# Se muestra al crear artefactos OpenSpec (IA / flujo spec-driven).
+context: |
+  Fuente de verdad de requisitos: openspec/specs/offline-voice-pipeline/spec.md.
+  La carpeta openspec/changes/archive/2026-04-07-offline-voice-pipeline-pi4/ es histórico del
+  cambio que originó el spec; no reemplaza al spec actual en openspec/specs/.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
