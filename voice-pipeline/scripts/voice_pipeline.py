@@ -193,6 +193,11 @@ def _line_is_llama_noise(s: str) -> bool:
         return True
     if re.match(r"(?i)^\s*\(?\s*in english\s*:", t):
         return True
+    if re.match(r"(?is)^eres un asistente\b", t) and re.search(
+        r"(?is)\bdebes\s+(responder|proporcionar)\b|\bno\s+proporciones\b",
+        t[:800],
+    ):
+        return True
     return False
 
 
@@ -211,6 +216,34 @@ def _strip_bilingual_translation_note(s: str) -> str:
     s = re.sub(r"(?is)\s*\(\s*translation\s*:\s*[^)]{1,4000}\)", "", s)
     s = re.sub(r"(?is)\s*\(\s*traducci[oó]n\s*:\s*[^)]{1,4000}\)", "", s)
     return s.strip()
+
+
+def _strip_leaked_system_persona(s: str) -> str:
+    """
+    El modelo a veces inventa un bloque tipo 'Eres un asistente para física avanzada… Debes…'
+    (no viene del repo; es alucinación). Quita ese párrafo si parece instrucción de rol.
+    """
+    if not s or not s.strip():
+        return s
+    t = s.strip()
+    if not re.match(r"(?is)^eres un asistente\b", t):
+        return s
+    head = t[:1400]
+    instruction_like = bool(
+        re.search(r"(?is)\bdebes\s+(responder|proporcionar|usar|seguir)\b", head)
+        or re.search(r"(?is)\bno\s+proporciones\b", head)
+        or re.search(r"(?is)\bevita\s+el\s+uso\b", head)
+        or re.search(r"(?is)\bprecisi[oó]n\s+técnica\b", head)
+        or re.search(r"(?is)\baudiencia\s+educada\b", head)
+    )
+    if not instruction_like:
+        return s
+    chunks = re.split(r"\n\s*\n+", t, maxsplit=1)
+    if len(chunks) == 2 and re.match(r"(?is)^eres un asistente\b", chunks[0].strip()):
+        return chunks[1].strip()
+    if len(chunks) == 1 and len(t) < 2500:
+        return ""
+    return s
 
 
 def _strip_end_of_text_markers(s: str) -> str:
@@ -367,6 +400,7 @@ def _clean_model_lines(body: str) -> str:
         lines_out.append(li)
     text = "\n".join(lines_out).strip()
     text = _strip_special_tokens(text)
+    text = _strip_leaked_system_persona(text)
     text = _strip_markdown_fences(text)
     text = _strip_rubric_leakage(text)
     text = _strip_markdown_spans(text)
@@ -416,7 +450,10 @@ def extract_llama_completion_text(raw: str) -> str:
         if _line_is_llama_noise(li):
             continue
         lines_kept.append(li)
-    tail = _strip_markdown_fences(_strip_special_tokens("\n".join(lines_kept).strip()))
+    tail = _strip_leaked_system_persona(
+        _strip_special_tokens("\n".join(lines_kept).strip()),
+    )
+    tail = _strip_markdown_fences(tail)
     tail = _strip_rubric_leakage(tail)
     tail = _strip_markdown_spans(tail)
     tail = _prefer_last_prose_paragraph(tail)
