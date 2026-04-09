@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
-Pipeline offline: WAV → whisper.cpp → llama-completion (Phi-3 GGUF) → Piper.
+Pipeline offline: WAV → whisper.cpp → llama (subprocess o llama-server HTTP local) → Piper.
 Filtro infantil opcional (VOICE_OUTPUT_FILTER=1 → output_filter.py).
-Sin HTTP en tiempo de inferencia; solo subprocess y archivos locales.
+Inferencia sin nube: subprocess o HTTP solo a VOICE_LLAMA_SERVER_URL (p. ej. 127.0.0.1).
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import tempfile
 from pathlib import Path
 
@@ -50,6 +53,23 @@ def compute_llama_output_tokens(llama_timeout_sec: int, ctx_size: int) -> tuple[
         floor_out = 256
     floor_out = max(64, min(floor_out, user_cap))
 
+    if os.environ.get("VOICE_FAST_CONVERSATION", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        try:
+            fc = int(os.environ.get("VOICE_FAST_MAX_TOKENS", "192"))
+        except ValueError:
+            fc = 192
+        try:
+            ffloor = int(os.environ.get("VOICE_FAST_MIN_OUTPUT_TOKENS", "96"))
+        except ValueError:
+            ffloor = 96
+        user_cap = min(user_cap, max(64, fc))
+        floor_out = min(floor_out, max(48, ffloor))
+        floor_out = max(48, min(floor_out, user_cap))
+
     try:
         est_tps = float(os.environ.get("VOICE_LLAMA_EST_TOKENS_PER_SEC", "2.5"))
     except ValueError:
@@ -77,6 +97,12 @@ def compute_llama_output_tokens(llama_timeout_sec: int, ctx_size: int) -> tuple[
         f"cap={user_cap} piso={floor_out} desde_timeout≈{from_time} "
         f"ctx_libre={ctx_room} (est {est_tps} tok/s × {llama_timeout_sec}s × {margin})"
     )
+    if os.environ.get("VOICE_FAST_CONVERSATION", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        detail += " · FAST_CONVERSATION"
     return n, detail
 
 
@@ -463,6 +489,76 @@ def extract_llama_completion_text(raw: str) -> str:
     return _strip_end_of_text_markers(tail)
 
 
+def _parse_llama_server_completion_json(data: object) -> str:
+    if not isinstance(data, dict):
+        raise RuntimeError(f"llama-server: respuesta JSON no es objeto: {type(data).__name__}")
+    if "content" in data and data["content"] is not None:
+        return str(data["content"])
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        ch0 = choices[0]
+        if isinstance(ch0, dict):
+            if ch0.get("text") is not None:
+                return str(ch0["text"])
+            msg = ch0.get("message")
+            if isinstance(msg, dict) and msg.get("content") is not None:
+                return str(msg["content"])
+    raise RuntimeError(
+        "llama-server: no se encontró texto en la respuesta (esperaba 'content' o choices[].text). "
+        f"Claves: {list(data.keys())}"
+    )
+
+
+def run_llama_server(
+    base_url: str,
+    prompt: str,
+    max_tokens: int,
+    timeout_sec: int,
+) -> tuple[str, str]:
+    """
+    Una petición a llama-server (modelo ya cargado en RAM): evita el coste de cargar el GGUF
+    en cada turno, el mayor ahorro de latencia en Pi frente a llama-completion por subprocess.
+    """
+    if max_tokens <= 0:
+        max_tokens = 256
+    url = base_url.rstrip("/") + "/completion"
+    payload: dict[str, object] = {
+        "prompt": prompt,
+        "n_predict": max_tokens,
+        "stream": False,
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    key = os.environ.get("VOICE_LLAMA_SERVER_API_KEY", "").strip()
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", errors="replace")[-4000:]
+        raise RuntimeError(f"llama-server HTTP {e.code} en {url}: {err}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(
+            f"No se pudo conectar a llama-server ({base_url}). Arranca el servidor con el mismo "
+            "modelo y contexto (véase voice-pipeline/scripts/llama_server_voice.sh y LATENCY.md). "
+            f"Detalle: {e}"
+        ) from e
+    data = json.loads(body)
+    raw_content = _parse_llama_server_completion_json(data)
+    combined = raw_content + "\n\n[server raw JSON below]\n" + body
+    text = extract_llama_completion_text(raw_content + "\n")
+    if not text.strip():
+        text = extract_llama_completion_text(combined)
+    if not text.strip():
+        text = _strip_end_of_text_markers(raw_content.strip())
+    return text, combined
+
+
 def run_llama(
     llama_bin: str,
     gguf: Path,
@@ -563,6 +659,7 @@ def main() -> int:
 
     whisper_bin = os.environ.get("WHISPER_BIN", "")
     whisper_model = os.environ.get("WHISPER_MODEL", "")
+    llama_server_url = os.environ.get("VOICE_LLAMA_SERVER_URL", "").strip()
     llama_bin = os.environ.get("LLAMA_COMPLETION", "").strip() or os.environ.get("LLAMA_CLI", "").strip()
     phi3 = os.environ.get("PHI3_GGUF", "")
     piper_bin = os.environ.get("PIPER_BIN", "")
@@ -603,9 +700,19 @@ def main() -> int:
         "yes",
     )
 
-    if not llama_bin:
+    if llama_server_url:
+        if not (
+            llama_server_url.startswith("http://") or llama_server_url.startswith("https://")
+        ):
+            print(
+                "VOICE_LLAMA_SERVER_URL debe ser una URL absoluta (http://127.0.0.1:8080 o https://…).",
+                file=sys.stderr,
+            )
+            return 2
+    elif not llama_bin:
         print(
-            "Falta LLAMA_COMPLETION (ruta a llama-completion) o LLAMA_CLI como alternativa",
+            "Falta LLAMA_COMPLETION (ruta a llama-completion), LLAMA_CLI, o bien "
+            "VOICE_LLAMA_SERVER_URL apuntando a llama-server en marcha.",
             file=sys.stderr,
         )
         return 2
@@ -613,7 +720,6 @@ def main() -> int:
     for name, val in [
         ("WHISPER_BIN", whisper_bin),
         ("WHISPER_MODEL", whisper_model),
-        ("PHI3_GGUF", phi3),
         ("PIPER_BIN", piper_bin),
         ("PIPER_VOICE_ONNX", piper_onnx),
         ("PIPER_VOICE_JSON", piper_json),
@@ -621,6 +727,12 @@ def main() -> int:
         if not val:
             print(f"Falta variable de entorno {name}", file=sys.stderr)
             return 2
+    if not phi3 and not llama_server_url:
+        print(
+            "Falta PHI3_GGUF (ruta al GGUF) cuando no usas VOICE_LLAMA_SERVER_URL.",
+            file=sys.stderr,
+        )
+        return 2
 
     if not args.input_wav.is_file():
         print(
@@ -656,25 +768,40 @@ def main() -> int:
             f"2/{ntot} LLM (Phi-3)…",
             flush=True,
         )
-        print(
-            "[voice-pipeline]    En RPi puede tardar 10–40+ min; timeout="
-            f"{llama_timeout}s. Ctrl+C para cancelar.",
-            flush=True,
-        )
+        if llama_server_url:
+            print(
+                "[voice-pipeline]    LLM vía llama-server (modelo en RAM; sin recarga por turno).",
+                flush=True,
+            )
+        else:
+            print(
+                "[voice-pipeline]    En RPi cada subprocess recarga el GGUF; puede tardar mucho. "
+                "Para fluidez, usa VOICE_LLAMA_SERVER_URL + llama-server (véase LATENCY.md). "
+                f"Timeout={llama_timeout}s. Ctrl+C para cancelar.",
+                flush=True,
+            )
         full_prompt = build_phi3_prompt(sys_prompt, transcript)
         ntok, ntok_detail = compute_llama_output_tokens(llama_timeout, ctx)
         print(f"[voice-pipeline] LLM -n {ntok} ({ntok_detail}).", flush=True)
         t_llm0 = time.perf_counter()
-        extracted, llama_stdout = run_llama(
-            llama_bin,
-            Path(phi3),
-            full_prompt,
-            ctx,
-            ntok,
-            llama_timeout,
-            llama_threads,
-            work,
-        )
+        if llama_server_url:
+            extracted, llama_stdout = run_llama_server(
+                llama_server_url,
+                full_prompt,
+                ntok,
+                llama_timeout,
+            )
+        else:
+            extracted, llama_stdout = run_llama(
+                llama_bin,
+                Path(phi3),
+                full_prompt,
+                ctx,
+                ntok,
+                llama_timeout,
+                llama_threads,
+                work,
+            )
         llm_sec = time.perf_counter() - t_llm0
         print(f"[voice-pipeline] LLM listo en {llm_sec:.1f} s.", flush=True)
         if args.log_dir:

@@ -5,6 +5,7 @@ Implementación del cambio OpenSpec `offline-voice-pipeline-pi4`: **Whisper tiny
 ## Documentación principal
 
 - Guía completa (instalación en Debian 13 trixie / RPi4, pruebas por etapa, licencias, latencia): [`../04-offline-voice-pipeline.md`](../04-offline-voice-pipeline.md)
+- **Reducir latencia** (llama-server, respuestas cortas, grabación): [`LATENCY.md`](LATENCY.md)
 - Modelos y tamaños: [`MODELS.md`](MODELS.md)
 - Variables de entorno de ejemplo: [`env.example`](env.example) → copia a `.env` y ajusta rutas en la Pi.
 
