@@ -1,3 +1,5 @@
+> **Spec canónico (fuente de verdad actual):** [`openspec/specs/offline-voice-pipeline/spec.md`](../../../specs/offline-voice-pipeline/spec.md) — este proposal y la carpeta del archive son **histórico** del cambio archivado.
+
 ## Why
 
 Un asistente de voz que funcione **sin internet** en Raspberry Pi 4 permite demos, privacidad y uso en redes restringidas. Hoy el stack OpenClaw en esta Pi depende de APIs en la nube para el modelo; este cambio define un **núcleo conversacional offline**: voz → texto (**Whisper tiny**), razonamiento local (**Phi-3-mini GGUF** vía `llama.cpp` o similar), texto → voz (**Piper TTS** español), encadenado de forma reproducible en hardware limitado.
